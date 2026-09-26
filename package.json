@@ -1,0 +1,32 @@
+{
+  "name": "raprid",
+  "version": "0.1.0",
+  "description": "プロジェクト管理リポジトリの初期状態を生成する CLI",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raprid/raprid-cli.git"
+  },
+  "bin": {
+    "raprid": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.18.0",
+  "scripts": {
+    "build": "node scripts/bundle-template.ts && tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test \"test/*.test.ts\"",
+    "template:sync": "node scripts/sync-template.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.0.0"
+  }
+}

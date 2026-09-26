@@ -1,0 +1,39 @@
+// template/ を dist/template.json にまとめる。npm run build から呼ぶ。
+
+import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { TemplateBundle, TemplateEntry, TemplateSource } from "../src/bundle.js";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const templateDir = join(repoRoot, "template");
+const distDir = join(repoRoot, "dist");
+
+function walk(dir: string): TemplateEntry[] {
+  const entries: TemplateEntry[] = [];
+  for (const name of readdirSync(dir).sort()) {
+    const full = join(dir, name);
+    const path = relative(templateDir, full).split("\\").join("/");
+    const stat = lstatSync(full);
+    if (stat.isSymbolicLink()) {
+      entries.push({ type: "symlink", path, target: readlinkSync(full) });
+    } else if (stat.isDirectory()) {
+      entries.push(...walk(full));
+    } else if (stat.isFile()) {
+      // Git と同じく実行権限の有無だけを持ち込む
+      const mode = stat.mode & 0o111 ? 0o755 : 0o644;
+      entries.push({ type: "file", path, mode, content: readFileSync(full).toString("base64") });
+    } else {
+      throw new Error(`扱えない種類のファイルです: ${path}`);
+    }
+  }
+  return entries;
+}
+
+const source = JSON.parse(readFileSync(join(repoRoot, "template-source.json"), "utf8")) as TemplateSource;
+const bundle: TemplateBundle = { format: 1, source, entries: walk(templateDir) };
+
+rmSync(distDir, { recursive: true, force: true });
+mkdirSync(distDir);
+writeFileSync(join(distDir, "template.json"), JSON.stringify(bundle));
+console.log(`dist/template.json: ${bundle.entries.length} 件 (雛形 ${source.commit.slice(0, 7)})`);

@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Claude Code
+# settings.local.json は端末ごとの個人設定なので追跡しない。
+# .claude/skills/ はプロジェクトの一部なので追跡する。
+.claude/settings.local.json
+
+# 共有スキルの Python キャッシュ (本体と Codex の入口は追跡する)
+.claude/skills/**/__pycache__/
+.claude/skills/**/*.pyc
+
+# Obsidian
+.obsidian/
+
+# Obsidian のローカルゴミ箱 (削除時の退避先)
+.trash/
+
+# エディタ
+.vscode/
+.idea/
+
+# pnpm
+node_modules/
+.pnpm-store/
+
+# 一時ファイル
+*.swp
+*.bak
+*~
+
+# submodule のローカル worktree
+/repos/*/.worktrees/
+
+# 案件固有の Playwright
+# .auth/ には認証済みの cookie が入るので確実に無視する
+job/*/assets/e2e/node_modules/
+job/*/assets/e2e/.auth/
+job/*/assets/e2e/test-results/
+job/*/assets/e2e/playwright-report/
