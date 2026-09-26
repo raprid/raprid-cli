@@ -25,7 +25,7 @@
   "packageManager": "pnpm@11.18.0",
   "scripts": {
     "build": "node scripts/bundle-template.ts && tsc -p tsconfig.build.json",
-    "prepare": "npm run build",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test \"test/*.test.ts\"",
     "template:sync": "node scripts/sync-template.ts"

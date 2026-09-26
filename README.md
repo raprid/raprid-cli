@@ -2,7 +2,7 @@
 
 プロジェクト管理リポジトリの初期状態を生成する `raprid` CLI。
 雛形は [project_template](https://github.com/shono1103/project_template) の特定コミットを同梱している。
-npm レジストリには公開していないため、GitHub またはローカルの tarball からインストールする。
+npm レジストリには公開せず、GitHub Release に添付した tarball からインストールする。
 
 ## 必要なもの
 
@@ -14,16 +14,23 @@ npm レジストリには公開していないため、GitHub またはローカ
 ## インストール
 
 ```sh
-npm install -g github:raprid/raprid-cli
+npm install -g https://github.com/raprid/raprid-cli/releases/latest/download/raprid.tgz
 raprid --version
 ```
 
-GitHub からのインストールでは、npm が依存を入れて `prepare` (ビルド) を実行してからインストールする。
+特定の版を入れる場合は、版ごとの tarball を指定する。
+
+```sh
+npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.1.0/raprid-0.1.0.tgz
+```
+
+`npm install -g github:raprid/raprid-cli` は使わない。git 依存のインストールでは npm が `-g` を
+ビルド用の内部 install にも引き継いでビルドに失敗し、GitHub の tarball 展開ではシンボリックリンクも落ちるため。
 手元のソースから入れる場合は tarball を作ってインストールする。
 
 ```sh
 pnpm install
-npm pack                          # raprid-<version>.tgz ができる (package.json の private により npm publish はできない)
+npm pack                          # prepack でビルドし raprid-<version>.tgz を作る (private のため npm publish はできない)
 npm install -g ./raprid-0.1.0.tgz
 ```
 
@@ -84,9 +91,10 @@ README、エージェント向け指示 (CLAUDE.md / AGENTS.md)、共有スキ�
 ## 更新
 
 CLI を新しくするには、インストールと同じコマンドをもう一度実行する。
+npm のキャッシュで古い版が入る場合は `--prefer-online` を付けるか、版ごとの tarball を指定する。
 
 ```sh
-npm install -g github:raprid/raprid-cli
+npm install -g --prefer-online https://github.com/raprid/raprid-cli/releases/latest/download/raprid.tgz
 ```
 
 **`raprid init` は新規作成専用で、生成済みのプロジェクトは更新しない。**
@@ -103,6 +111,7 @@ npm install -g github:raprid/raprid-cli
 │   └── bundle-template.ts    # template/ を dist/template.json にまとめる (build の一部)
 ├── template/                 # 同梱する雛形 (直接編集しない)
 ├── template-source.json      # template/ の取り込み元リポジトリ・ref・コミット
+├── template-links.json       # 雛形のシンボリックリンク (template/ には置かない)
 ├── overrides/                # 雛形を初期状態にするための差し替えファイル
 └── test/                     # node:test の結合テスト
 ```
@@ -130,7 +139,8 @@ pnpm test
 `template/` の外を指すシンボリックリンクがあるとビルドを中止する。
 
 npm pack はシンボリックリンクや `.gitignore` をそのまま同梱できないため、
-配布物には `template/` を種別・実行権限ごと 1 つの JSON (`dist/template.json`) にまとめて入れる。
+配布物には `template/` と `template-links.json` を種別・実行権限ごと 1 つの JSON (`dist/template.json`) にまとめて入れる。
+同じ理由で、同期時に雛形のシンボリックリンクは `template/` から除き `template-links.json` に記録する。
 
 ### 配布物を確認する
 
@@ -139,6 +149,18 @@ npm pack --dry-run                                    # 同梱一覧 (dist/ と 
 prefix="$(mktemp -d)"
 npm install -g --prefix "$prefix" ./raprid-0.1.0.tgz
 "$prefix/bin/raprid" init "$(mktemp -d)/sample"
+```
+
+### リリースする
+
+`package.json` の `version` を上げてコミット・push した後、tarball を作って GitHub Release に添付する。
+`raprid.tgz` (最新版の固定名) と `raprid-<version>.tgz` (版ごと) の 2 つを付ける。
+
+```sh
+pnpm test
+npm pack
+cp raprid-0.1.0.tgz raprid.tgz
+gh release create v0.1.0 raprid.tgz raprid-0.1.0.tgz --title v0.1.0 --notes "雛形: project_template <コミット>"
 ```
 
 ## ライセンス
