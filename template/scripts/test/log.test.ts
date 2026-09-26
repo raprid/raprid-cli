@@ -13,9 +13,19 @@ const execFileAsync = promisify(execFile);
 let root: string;
 const children: ReturnType<typeof controlled>[] = [];
 
+// 日付の階層だけをたどる。並行する子プロセスが作っては消す .tmp/・.locks/ は読まない (読むと ENOENT で落ちる)
 function allSessions(session: string): string[] {
-  return readdirSync(root, { recursive: true, encoding: "utf8" })
-    .filter((path) => /^\d{4}\/\d{2}\/\d{2}\/claude\//.test(path) && path.endsWith(`/${session}`)).sort();
+  const found: string[] = [];
+  const dirs = (path: string, pattern: RegExp) =>
+    existsSync(path) ? readdirSync(path).filter((name) => pattern.test(name)) : [];
+  for (const year of dirs(root, /^\d{4}$/)) {
+    for (const month of dirs(join(root, year), /^\d{2}$/)) {
+      for (const day of dirs(join(root, year, month), /^\d{2}$/)) {
+        if (existsSync(join(root, year, month, day, "claude", session))) found.push(`${year}/${month}/${day}/claude/${session}`);
+      }
+    }
+  }
+  return found.sort();
 }
 
 async function waitFor(check: () => boolean): Promise<void> {
