@@ -17,7 +17,8 @@ export function scriptsInfo(dir = scriptsDir): ScriptsInfo {
   return pkg.raprid;
 }
 
-// 操作対象の管理リポジトリ。通常は scripts/ の親で、配布CLIの移行開始処理だけが RAPRID_ROOT で指定する
+// 操作対象の管理リポジトリ。raprid CLI は判定したルートを RAPRID_ROOT で渡す (移行開始処理では旧プロジェクト)。
+// 指定が無ければ scripts/ の実体の親を使う (scripts/ がシンボリックリンクなら、pnpm raprid はリンク先の親を操作する)
 export function projectRoot(): string {
   return resolve(process.env.RAPRID_ROOT || join(scriptsDir, ".."));
 }

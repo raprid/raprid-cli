@@ -418,3 +418,48 @@ test("CRLF の .gitignore とタブで整形した package.json の書式を保�
   assert.equal(read(root, ".gitignore"), "node_modules/\r\njobs/*/assets/e2e/node_modules/\r\n\r\n# raprid (案件操作のロックと移行時の退避先)\r\njobs/.locks/\r\n.raprid-migrate/\r\n");
   assert.equal(read(root, "package.json"), '{\n\t"name": "old",\n\t"scripts": {\n\t\t"raprid": "node scripts/cli.ts"\n\t}\n}\n');
 });
+
+test("別の移行が完了した後に古い記録で restore しても何も消さない", () => {
+  // 移行 A: jobs/ を置く前に止まった記録を再現する (失敗時の自動の巻き戻しより前に強制終了した状態)
+  const hook = join(work, "crash.cjs");
+  writeFileSync(hook, `
+    const fs = require("node:fs");
+    const rename = fs.renameSync;
+    fs.renameSync = (from, to) => {
+      if (String(to).endsWith("/jobs") && String(from).includes("/stage/")) process.exit(9);
+      return rename(from, to);
+    };
+    require("node:module").syncBuiltinESMExports();
+  `);
+  const crashed = raprid(root, ["job", "migrate", "--apply"], { require: hook });
+  assert.equal(crashed.status, 9);
+  const stale = readdirSync(join(root, ".raprid-migrate")).find((name) => /^\d{8}-/.test(name))!;
+  assert.match(read(root, `.raprid-migrate/${stale}/journal.json`), /"started"/);
+  assert.equal(migrate("--apply").status, 0, "移行 B");
+  const before = snapshot(root, skipWork);
+  const result = migrate("--restore", stale);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /別の移行が完了している可能性があります/);
+  assert.deepEqual(snapshot(root, skipWork), before);
+});
+
+test("作成予定のファイルが実行前に現れたら何も変えずに中止する", () => {
+  const hook = join(work, "race.cjs");
+  // 計画の作成後、最初の rename の前に package.json を作る
+  writeFileSync(hook, `
+    const fs = require("node:fs");
+    const cp = fs.cpSync;
+    let done = false;
+    fs.cpSync = (...args) => {
+      if (!done) { done = true; fs.writeFileSync(${JSON.stringify(join(root, "package.json"))}, "{}"); }
+      return cp(...args);
+    };
+    require("node:module").syncBuiltinESMExports();
+  `);
+  const result = raprid(root, ["job", "migrate", "--apply"], { require: hook });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /計画の作成後に変更されたファイル[\s\S]*package\.json/);
+  assert.ok(existsSync(join(root, "job")));
+  assert.equal(existsSync(join(root, "jobs")), false);
+  assert.equal(read(root, "package.json"), "{}");
+});

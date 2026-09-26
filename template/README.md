@@ -182,6 +182,8 @@ node scripts/cli.ts task list PROJ-123 # pnpm も無い環境
 Git リポジトリの境界 (`.git` のあるディレクトリ) より上は探さないので、submodule の中から親の管理リポジトリを
 誤って操作することはない。CLI が対応していない `protocol` の場合は、CLI かプロジェクトの `scripts/` の
 どちらを更新すべきかを表示して終了する (終了コード 1)。
+`scripts/` をシンボリックリンクで共有した場合、`raprid` は判定したルートを操作するが、
+`pnpm raprid` と `node scripts/cli.ts` はリンク先の親を操作する (`RAPRID_ROOT=<ルート>` を付けると揃う)。
 
 `scripts/` 自身の変更は通常のコード変更と同じくテストしてからコミットする (`pnpm typecheck`、`pnpm test`)。
 スキル付属の補助スクリプト (`count_tokens.sh` など) はスキルの中に置き、`scripts/` には移さない。

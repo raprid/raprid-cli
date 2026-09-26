@@ -48,7 +48,7 @@ function unquote(value: string): string {
 
 // 読み戻したときに同じ値になるよう、必要なときだけ二重引用符で囲む
 export function yamlScalar(value: string): string {
-  if (value === "" || /\s#|^[#'"[\]{}&*!|>%@`]|^-\s|\s$|^\s/.test(value)) return JSON.stringify(value);
+  if (value === "" || /\s#|:\s|:$|^[#'"[\]{}&*!|>%@`?,]|^-\s|\s$|^\s/.test(value)) return JSON.stringify(value);
   return value;
 }
 

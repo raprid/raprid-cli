@@ -793,11 +793,16 @@ function planRollback(root: string, journal: Journal): { actions: RollbackAction
   if (exists(backupJob)) {
     if (exists(join(root, "job"))) blockers.push("job/ と退避した job/ が両方あります");
     else actions.push({ label: "job/ を戻す", run: () => renameSync(backupJob, join(root, "job")) });
+  } else if (!exists(join(root, "job"))) {
+    // 別の移行が進んだか退避が失われた状態。ここで jobs/ を消すと旧構成も新構成も残らない
+    blockers.push(`job/ も退避した job/ (.raprid-migrate/${journal.id}/backup/job) もありません。別の移行が完了している可能性があります`);
   }
   for (const rewrite of [...journal.rewrites].reverse()) {
     const path = join(root, rewrite.path);
     const current = isFile(path) ? sha256(readFileSync(path)) : undefined;
     if (current === rewrite.original) continue; // まだ書き換えていない
+    // 作成予定だったファイルを別の誰かが作った場合は、この移行のものではないので触れない
+    if (rewrite.original === undefined && current !== rewrite.staged) continue;
     if (current !== rewrite.staged) {
       blockers.push(`移行後に変更されたファイル: ${rewrite.path}`);
       continue;
@@ -817,8 +822,9 @@ function planRollback(root: string, journal: Journal): { actions: RollbackAction
   for (const [name, expected] of [["scripts", journal.staged.scripts], ["jobs", journal.staged.jobs]] as const) {
     if (!expected || !exists(join(root, name))) continue;
     // 計画時には無かったディレクトリ。この移行で置いた内容と一致するときだけ削除する
-    const changed = Object.keys({ ...hashTree(root, name), ...expected }).filter((key) => hashTree(root, name)[key] !== expected[key]);
-    if (!sameTree(hashTree(root, name), expected)) {
+    const actual = hashTree(root, name);
+    if (!sameTree(actual, expected)) {
+      const changed = [...new Set([...Object.keys(actual), ...Object.keys(expected)])].filter((key) => actual[key] !== expected[key]);
       blockers.push(...changed.slice(0, 20).map((key) => `移行後に変更されたファイル: ${key}`));
       continue;
     }
@@ -827,8 +833,8 @@ function planRollback(root: string, journal: Journal): { actions: RollbackAction
   return { actions, blockers };
 }
 
-function rollback(root: string, journal: Journal): string[] {
-  const { actions, blockers } = planRollback(root, journal);
+function rollback(root: string, journal: Journal, planned = planRollback(root, journal)): string[] {
+  const { actions, blockers } = planned;
   if (blockers.length > 0) return blockers;
   const failures: string[] = [];
   for (const action of actions) {
@@ -875,6 +881,7 @@ function apply(plan: Plan, expected: string | undefined): void {
     }
   }
   const changed = currentSources(root, plan);
+  for (const rewrite of plan.rewrites) if (rewrite.created && exists(join(root, rewrite.path))) changed.push(rewrite.path);
   if (changed.length > 0) {
     rmSync(dir, { recursive: true, force: true });
     throw new CliError(["計画の作成後に変更されたファイルがあるため、何も変更せずに中止しました:", ...changed.map((rel) => `  ${rel}`)].join("\n"));
@@ -934,11 +941,11 @@ function restore(root: string, id: string): void {
     console.log(`移行 ${id} は既に戻されています。変更はありません。`);
     return;
   }
-  const { blockers } = planRollback(root, journal);
-  if (blockers.length > 0) {
-    throw new CliError(["移行後に変更されたファイルがあるため、戻さずに中止しました (退避は残っています):", ...blockers.map((blocker) => `  ${blocker}`)].join("\n"));
+  const planned = planRollback(root, journal);
+  if (planned.blockers.length > 0) {
+    throw new CliError(["移行後に変更されたファイルがあるため、戻さずに中止しました (退避は残っています):", ...planned.blockers.map((blocker) => `  ${blocker}`)].join("\n"));
   }
-  const failures = rollback(root, journal);
+  const failures = rollback(root, journal, planned);
   if (failures.length === 0) journal.state = "restored";
   saveJournal(root, journal);
   if (failures.length > 0) throw new CliError(["一部を戻せませんでした:", ...failures.map((failure) => `  ${failure}`)].join("\n"));

@@ -85,7 +85,7 @@ test("状態変更は日付・依存関係・索引を一緒に更新し、未�
   ok(["task", "move", "PROJ-1", "T-001", "pending", "other: 権限の付与"]);
   let text = read(root, path);
   assert.match(text, /status: pending\n/);
-  assert.match(text, /blockedBy:\n  - other: 権限の付与\n/);
+  assert.match(text, /blockedBy:\n  - "other: 権限の付与"\n/, "一般の YAML でも文字列として読めるよう引用する");
   assert.equal(readlinkSync(join(root, "jobs/PROJ-1/status/pending/api-setup")), "../../tasks/api-setup");
   assert.equal(existsSync(join(root, "jobs/PROJ-1/status/todo/api-setup")), false);
 
