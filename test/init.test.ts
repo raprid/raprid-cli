@@ -147,6 +147,43 @@ test("生成途中で失敗したら、この実行で作ったものだけを�
   }
 });
 
+test("書き込みの途中で失敗しても作りかけのファイルを残さない", () => {
+  // ulimit -f 1 (512 バイト) を超える write が EFBIG で失敗する。open は成功した後の失敗を再現する
+  const result = spawnSync("sh", ["-c", `ulimit -f 1; exec "$0" "$@"`, process.execPath, cli, "init", "p", "--no-git"], {
+    cwd: work,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /EFBIG/);
+  assert.deepEqual(tree(work), []);
+});
+
+test("GIT_DIR などの環境変数があっても生成先に git init する", () => {
+  const result = spawnSync(process.execPath, [cli, "init", "p"], {
+    cwd: work,
+    encoding: "utf8",
+    env: { ...process.env, GIT_DIR: join(work, "outside.git"), GIT_WORK_TREE: work },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(existsSync(join(work, "p", ".git")));
+  assert.equal(existsSync(join(work, "outside.git")), false);
+});
+
+test("生成先の途中がファイルやリンクなら通常のエラーで終了する", () => {
+  writeFileSync(join(work, "file"), "");
+  const underFile = raprid(work, "init", "file/sub", "--dry-run");
+  assert.equal(underFile.status, 1);
+  assert.match(underFile.stderr, /生成先を確認できません/);
+  assert.doesNotMatch(underFile.stderr, /\n\s+at /);
+
+  mkdirSync(join(work, "real"));
+  symlinkSync("real", join(work, "link"));
+  const link = raprid(work, "init", "link");
+  assert.equal(link.status, 1);
+  assert.match(link.stderr, /シンボリックリンクは指定できません/);
+  assert.deepEqual(readdirSync(join(work, "real")), []);
+});
+
 test("引数の誤りは終了コード 2", () => {
   for (const args of [[], ["unknown"], ["init", "a", "b"], ["init", "--force"]]) {
     const result = raprid(work, ...args);

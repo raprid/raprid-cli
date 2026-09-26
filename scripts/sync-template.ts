@@ -57,11 +57,14 @@ const sourceRepo = resolve(positionals[0]);
 const git = (...args: string[]) => execFileSync("git", ["-C", sourceRepo, ...args], { encoding: "utf8" }).trim();
 const commit = git("rev-parse", "--verify", `${values.ref}^{commit}`);
 const refName = values.ref === "HEAD" ? git("rev-parse", "--abbrev-ref", "HEAD") : values.ref;
-let repository = sourceRepo;
+// 取り込み元は公開される配布物に入るため、origin の URL から認証情報を除いて記録する。
+// ローカルのパスを記録しないよう、origin が無ければ中止する。
+let repository: string;
 try {
-  repository = git("remote", "get-url", "origin");
+  repository = git("remote", "get-url", "origin").replace(/^(\w+:\/\/)[^@/]+@/, "$1");
 } catch {
-  // リモートが無ければローカルのパスを記録する
+  console.error(`origin が設定されていません: ${sourceRepo}`);
+  process.exit(1);
 }
 
 const work = mkdtempSync(join(tmpdir(), "raprid-template-"));

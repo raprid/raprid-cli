@@ -39,6 +39,45 @@ test("新規セッションをテンプレートから作成する", () => {
   assert.deepEqual(readdirSync(dir).sort(), ["_.md", "index.md", "outputs"]);
 });
 
+test("既存と報告された時点でテンプレートの複製が済んでいる", async () => {
+  const runs = Array.from({ length: 8 }, () =>
+    execFileAsync(process.execPath, [script, "claude", "--session", "s1"], {
+      env: { ...process.env, LOGS_ROOT: root },
+    }).then((result) => {
+      // 自分が返った瞬間に、完成したディレクトリが見えていること
+      const path = result.stdout.match(/logs\/(.+)$/m)?.[1];
+      assert.ok(path, result.stdout);
+      return readdirSync(join(root, path)).sort();
+    }),
+  );
+  for (const listing of await Promise.all(runs)) {
+    assert.deepEqual(listing, ["_.md", "index.md", "outputs"]);
+  }
+});
+
+test("日付の異なる同時実行でも同じセッションは1つだけ作られる", async () => {
+  for (let i = 0; i < 5; i++) {
+    const session = `race-${i}`;
+    const variants = [["--date", "2026-09-25"], ["--date", "2026-09-26"], []];
+    await Promise.allSettled(
+      variants.map((extra) =>
+        execFileAsync(process.execPath, [script, "claude", "--session", session, ...extra], {
+          env: { ...process.env, LOGS_ROOT: root },
+        }),
+      ),
+    );
+    const days = ["25", "26"].filter((day) => existsSync(join(root, "2026", "09", day, "claude", session)));
+    assert.equal(days.length, 1, `${session}: ${days.join(",")}`);
+  }
+});
+
+test("作業用のディレクトリを残さない", () => {
+  run("claude", "--session", "s1");
+  run("claude");
+  assert.deepEqual(readdirSync(join(root, ".tmp")), []);
+  assert.deepEqual(readdirSync(join(root, ".locks", "claude")), []);
+});
+
 test("セッション ID を省略すると当日の UUID ディレクトリを作る", () => {
   const result = run("codex");
   assert.equal(result.status, 0);
@@ -77,7 +116,7 @@ test("日付を省略して再開すると開始日のディレクトリを使�
   const result = run("claude", "--session", "s1");
   assert.equal(result.status, 0);
   assert.match(result.stdout, /既存のセッションログ: logs\/2026\/09\/25\/claude\/s1/);
-  assert.equal(readdirSync(root).length, 1);
+  assert.deepEqual(readdirSync(root).filter((name) => /^\d{4}$/.test(name)), ["2026"]);
   assert.deepEqual(sessions(join(root, "2026", "09")), ["25"]);
 });
 

@@ -1,6 +1,7 @@
 {
   "name": "raprid",
   "version": "0.1.0",
+  "private": true,
   "description": "プロジェクト管理リポジトリの初期状態を生成する CLI",
   "license": "MIT",
   "type": "module",
@@ -17,6 +18,10 @@
   "engines": {
     "node": ">=24"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "packageManager": "pnpm@11.18.0",
   "scripts": {
     "build": "node scripts/bundle-template.ts && tsc -p tsconfig.build.json",

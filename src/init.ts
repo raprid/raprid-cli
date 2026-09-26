@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, lstatSync, mkdirSync, readFileSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { closeSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, rmdirSync, symlinkSync, unlinkSync, writeSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { TemplateBundle, TemplateEntry } from "./bundle.js";
 
 export interface InitOptions {
@@ -44,11 +44,19 @@ export function findConflicts(root: string, entries: TemplateEntry[]): string[] 
   return [...conflicts].sort();
 }
 
-function assertInside(root: string, path: string): void {
+function isInside(root: string, path: string): boolean {
   const rel = relative(root, path);
-  if (rel === "" || rel.startsWith("..") || rel.startsWith(sep)) {
-    throw new InitError(`テンプレートのパスが不正です: ${path}`);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+// 同梱雛形のパスとリンク先が生成先の外を指していないことを確かめる
+function assertEntryInside(root: string, entry: TemplateEntry): string {
+  const path = resolve(root, entry.path);
+  if (!isInside(root, path)) throw new InitError(`テンプレートのパスが不正です: ${entry.path}`);
+  if (entry.type === "symlink" && (isAbsolute(entry.target) || !isInside(root, resolve(dirname(path), entry.target)))) {
+    throw new InitError(`テンプレートのリンク先が不正です: ${entry.path} -> ${entry.target}`);
   }
+  return path;
 }
 
 // 書き込みに失敗したら、この実行で作ったものだけを逆順に消す
@@ -66,18 +74,30 @@ class Writer {
     }
   }
 
-  write(root: string, entry: TemplateEntry): void {
-    const path = resolve(root, entry.path);
-    assertInside(root, path);
+  write(root: string, realRoot: string, entry: TemplateEntry): void {
+    const path = assertEntryInside(root, entry);
     this.mkdirs(dirname(path));
+    // 検査後に途中の階層がリンクへ置き換えられても、外へは書き込まない
+    if (!isInside(realRoot, join(realpathSync(dirname(path)), "x"))) {
+      throw new InitError(`生成先の外を指す階層があります: ${dirname(entry.path)}`);
+    }
     if (entry.type === "symlink") {
       symlinkSync(entry.target, path);
-    } else {
-      // wx: 衝突の検査後に別のプロセスが作ったファイルも上書きしない
-      writeFileSync(path, Buffer.from(entry.content, "base64"), { flag: "wx" });
-      chmodSync(path, entry.mode);
+      this.created.push({ path, kind: "file" });
+      return;
     }
+    // wx: 衝突の検査後に別のプロセスが作ったファイルも上書きしない。mode は umask を通して適用される
+    const fd = openSync(path, "wx", entry.mode);
+    // 書き込みに失敗しても消せるよう、作成した時点で記録する
     this.created.push({ path, kind: "file" });
+    try {
+      const content = Buffer.from(entry.content, "base64");
+      for (let offset = 0; offset < content.length; ) {
+        offset += writeSync(fd, content, offset);
+      }
+    } finally {
+      closeSync(fd);
+    }
   }
 
   rollback(): void {
@@ -93,8 +113,14 @@ class Writer {
   }
 }
 
+// GIT_DIR などが設定されていると git init が生成先の外にリポジトリを作るため、GIT_* を除いて実行する
+function runGit(args: string[]) {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+  return spawnSync("git", args, { encoding: "utf8", env });
+}
+
 function insideGitWorkTree(dir: string): boolean {
-  const result = spawnSync("git", ["-C", dir, "rev-parse", "--is-inside-work-tree"], { encoding: "utf8" });
+  const result = runGit(["-C", dir, "rev-parse", "--is-inside-work-tree"]);
   return result.status === 0 && result.stdout.trim() === "true";
 }
 
@@ -106,12 +132,18 @@ export interface InitResult {
 
 export function init(options: InitOptions, bundle: TemplateBundle = loadBundle()): InitResult {
   const root = resolve(options.target);
-  const rootStat = lstatOrUndefined(root);
-  if (rootStat && !rootStat.isDirectory()) {
-    throw new InitError(`生成先がディレクトリではありません: ${root}`);
+  let conflicts: string[];
+  try {
+    const rootStat = lstatOrUndefined(root);
+    if (rootStat?.isSymbolicLink()) throw new InitError(`生成先にシンボリックリンクは指定できません: ${root}`);
+    if (rootStat && !rootStat.isDirectory()) throw new InitError(`生成先がディレクトリではありません: ${root}`);
+    for (const entry of bundle.entries) assertEntryInside(root, entry);
+    conflicts = findConflicts(root, bundle.entries);
+  } catch (error) {
+    if (error instanceof InitError) throw error;
+    // 途中の階層がファイル (ENOTDIR) や読めないディレクトリ (EACCES) の場合
+    throw new InitError(`生成先を確認できません: ${error instanceof Error ? error.message : String(error)}`);
   }
-
-  const conflicts = findConflicts(root, bundle.entries);
   if (conflicts.length > 0) {
     const shown = conflicts.slice(0, 20).map((path) => `  ${path}`);
     if (conflicts.length > shown.length) shown.push(`  ...ほか ${conflicts.length - shown.length} 件`);
@@ -127,7 +159,8 @@ export function init(options: InitOptions, bundle: TemplateBundle = loadBundle()
   const writer = new Writer();
   try {
     writer.mkdirs(root);
-    for (const entry of bundle.entries) writer.write(root, entry);
+    const realRoot = realpathSync(root);
+    for (const entry of bundle.entries) writer.write(root, realRoot, entry);
   } catch (error) {
     writer.rollback();
     const message = error instanceof Error ? error.message : String(error);
@@ -139,7 +172,7 @@ export function init(options: InitOptions, bundle: TemplateBundle = loadBundle()
     if (insideGitWorkTree(root)) {
       git = "existing";
     } else {
-      const result = spawnSync("git", ["init", "--quiet", root], { encoding: "utf8" });
+      const result = runGit(["init", "--quiet", root]);
       git = result.status === 0 ? "initialized" : "unavailable";
     }
   }

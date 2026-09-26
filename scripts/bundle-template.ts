@@ -1,7 +1,7 @@
 // template/ を dist/template.json にまとめる。npm run build から呼ぶ。
 
 import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TemplateBundle, TemplateEntry, TemplateSource } from "../src/bundle.js";
 
@@ -16,7 +16,12 @@ function walk(dir: string): TemplateEntry[] {
     const path = relative(templateDir, full).split("\\").join("/");
     const stat = lstatSync(full);
     if (stat.isSymbolicLink()) {
-      entries.push({ type: "symlink", path, target: readlinkSync(full) });
+      const target = readlinkSync(full);
+      const resolved = relative(templateDir, resolve(dirname(full), target));
+      if (isAbsolute(target) || resolved.startsWith("..") || isAbsolute(resolved)) {
+        throw new Error(`template/ の外を指すリンクは同梱できません: ${path} -> ${target}`);
+      }
+      entries.push({ type: "symlink", path, target });
     } else if (stat.isDirectory()) {
       entries.push(...walk(full));
     } else if (stat.isFile()) {

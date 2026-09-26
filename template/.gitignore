@@ -27,6 +27,10 @@
 node_modules/
 .pnpm-store/
 
+# logs/create_log.ts の作業用 (作成途中の複製とセッションのロック)
+logs/.tmp/
+logs/.locks/
+
 # 一時ファイル
 *.swp
 *.bak
