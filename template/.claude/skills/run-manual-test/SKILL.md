@@ -9,7 +9,7 @@ description: docs/feature/ 配下の Gherkin 手順を利用可能なブラウ�
 [Gherkin 手順書の規約](../../../docs/feature/README.md) を読む。
 
 `docs/feature/` の手順をエージェントが実行し、結果を
-`job/<案件名>/assets/<タスク名>/<実行日>/` に残す。
+`jobs/<案件名>/tasks/<タスク名>/assets/<実行日>/` に残す。
 手順書の正は `.feature` であり、自動実行コードは写しとして扱う。
 
 ## 引数
@@ -22,7 +22,7 @@ description: docs/feature/ 配下の Gherkin 手順を利用可能なブラウ�
 
 ## 実行経路
 
-1. `job/<案件名>/assets/e2e/README.md` が存在する場合は、対応する spec・fixture・設定を読み、
+1. `jobs/<案件名>/assets/e2e/README.md` が存在する場合は、対応する spec・fixture・設定を読み、
    feature との対応範囲を確認してその経路を使う。
 2. 案件固有の実行コードがない場合は、利用可能なブラウザ操作・画面取得・ネットワーク確認機能を使う。
 3. URL だけを差し替えて、ローカル DB 用 fixture を共有環境や本番へ転用しない。
@@ -35,7 +35,7 @@ description: docs/feature/ 配下の Gherkin 手順を利用可能なブラウ�
 ファイル名順に展開する。
 
 ```sh
-sed -n '/^---$/,/^---$/p' job/<案件名>/list/<タスク名>.md
+sed -n '/^---$/,/^---$/p' jobs/<案件名>/tasks/<タスク名>/index.md
 find docs/feature/<領域>/<機能> -maxdepth 1 -type f -name '*.feature' | sort
 ```
 
@@ -80,7 +80,7 @@ Then を実測して、次のいずれかを記録する。
 同日に複数回実行するときは `<実行日>-2/` のように分け、既存結果を上書きしない。
 
 ```text
-job/<案件名>/assets/<タスク名>/<実行日>/
+jobs/<案件名>/tasks/<タスク名>/assets/<実行日>/
 ├── result.md
 └── <ID>-<内容>.gif
 ```
@@ -111,7 +111,7 @@ job/<案件名>/assets/<タスク名>/<実行日>/
 最後にシナリオ ID と完了条件の対応を検証する。
 
 ```sh
-./.claude/skills/verify-task/check_scenario_ids.sh job/<案件名>/list/<タスク名>.md
+./.claude/skills/verify-task/check_scenario_ids.sh jobs/<案件名>/tasks/<タスク名>/index.md
 ```
 
 ## 中断する条件

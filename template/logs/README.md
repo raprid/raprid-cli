@@ -8,12 +8,6 @@ agent が行った作業を、日付・agent 名・セッション ID ごとに�
 ```text
 logs/
 ├── README.md
-├── create_log.ts              # セッションログを作成する
-├── create_log.test.ts         # 作成処理のテスト (pnpm test)
-├── template/                  # 新規セッションの複製元 (直接編集しない)
-│   ├── index.md
-│   ├── _.md
-│   └── outputs/
 └── <YYYY>/<MM>/<DD>/<agent_name>/<session_id>/
     ├── index.md               # セッション全体の目的・作業・結果・次回
     ├── _.md                   # 個別の作業記録の複製元
@@ -49,6 +43,10 @@ pnpm log:create codex --session <session_id>                  # agent のセッ�
 pnpm log:create codex --date 2026-09-24 --session <session_id> # 日付も指定する
 ```
 
+`raprid log create <agent_name> [...]` (`node scripts/cli.ts log create ...`) も同じ処理を呼ぶ。
+作成処理は `scripts/commands/log.ts`、雛形は `scripts/templates/log/`、回帰テストは `scripts/test/log.test.ts`。
+引数の誤りは終了コード 2、作成できなかった場合は 1 で終了する。
+
 作成されたパス (`logs/...`) を控え、同じセッションの間はそのディレクトリを使い続ける。
 同時に実行しても、1つのセッションは1回だけ作られる。テンプレートは `logs/.tmp/` に複製してから移すので、
 表示されたパスには常に完成した中身がある。`--session` 指定時は `logs/.locks/` で排他する (どちらも Git 管理外)。
@@ -83,10 +81,10 @@ cp logs/2026/09/26/claude/<session_id>/_.md logs/2026/09/26/claude/<session_id>/
 
 書き込み権限を持たないサブエージェントの記録は、呼び出した側がそのエージェント名のセッションを作ってまとめる。
 
-## docs/・job/ との使い分け
+## docs/・jobs/ との使い分け
 
 `logs/` は agent のセッション単位の時系列記録。継続的に参照する資料は `docs/`、
-タスクの結論の根拠は `job/<案件名>/assets/` に置く。調査結果はまず `outputs/` に出し、
+タスクの結論の根拠は `jobs/<案件名>/tasks/<タスク名>/assets/` に置く。調査結果はまず `outputs/` に出し、
 以後も参照するものだけ移す。
 
 ## 旧 daily/ からの移行

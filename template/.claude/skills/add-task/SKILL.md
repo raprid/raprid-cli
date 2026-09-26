@@ -1,22 +1,23 @@
 ---
 name: add-task
-description: job/ 配下に案件とタスクを追加する。会話中の調査結果や課題票から内容・完了条件・初期状態を整理し、実体と相対リンクを作る。タスクの新規登録を頼まれたときに使う。既存タスクの状態変更は task-transition を使う。
+description: jobs/ 配下に案件とタスクを追加する。会話中の調査結果や課題票から内容・完了条件・初期状態を整理し、実体と相対リンクを作る。タスクの新規登録を頼まれたときに使う。既存タスクの状態変更は task-transition を使う。
 ---
 
 # add-task
 
 先に [共通実行ルール](../runtime.md) を読む。
 
-`job/<案件名>/` にタスクを追加する。案件がまだ無ければ案件ごと作る。
+`jobs/<案件名>/` にタスクを追加する。案件がまだ無ければ案件ごと作る。
 会話の材料を使って進め、対象や完了条件を決めるために不足する情報だけ確認する。
 
-タスクの実体は `list/<タスク名>.md` に置き、`status/` 内の
-`todo/` `pending/` `progress/` `done/` には
-`../../list/<タスク名>.md` を指す**相対シンボリックリンク**を置く。
+タスクの実体はディレクトリ `tasks/<タスク名>/` で、要約を `index.md`、フェーズや調査ごとの記録を
+詳細 md (`01-<詳細名>.md` …) に置く。`status/` 内の `todo/` `pending/` `progress/` `done/` には
+`../../tasks/<タスク名>` を指す**相対シンボリックリンク**を置く。
 状態の正は実体の frontmatter `status` で、リンクは索引として使う (詳細は [README.md](../../../README.md))。
 各実体には案件内で固定の`T-001`形式の`id`を持たせる。既存IDの最大値＋1を使う。
 実体は削除せず、廃止時も記録として残す運用とし、欠番は埋めない。
 このスキルが行うのは**初期登録** (実体の作成 + `status/{todo,pending,progress}/` のいずれかへのリンク) まで。
+実体と索引は `raprid task add` で作る (CLI が無ければ `pnpm raprid task add` か `node scripts/cli.ts task add`)。
 以降の状態遷移は task-transition スキルに任せる。
 
 ## このスキルの肝
@@ -47,7 +48,7 @@ description: job/ 配下に案件とタスクを追加する。会話中の調�
 ### 2. 案件を決める
 
 ```sh
-find job -mindepth 1 -maxdepth 1 -type d -not -name template | sort
+find jobs -mindepth 1 -maxdepth 1 -type d -not -name '.*' | sort
 ```
 
 * 既存の案件に該当するものがあればそれを使う。部分一致で探し、複数該当したら候補を挙げて確認する。
@@ -55,7 +56,7 @@ find job -mindepth 1 -maxdepth 1 -type d -not -name template | sort
   案件名は課題番号 (`PROJ-123`) など、課題管理システムでそのまま引ける名前を優先する。
 
 ```sh
-cp -R job/template job/<案件名>
+raprid job create <案件名>
 ```
 
 ### 3. 必要なことをまとめて聞く
@@ -79,17 +80,26 @@ cp -R job/template job/<案件名>
 ただし選択肢で答えられる形にできないものは、質問攻めにせず
 **こちらで草案を書いて見せたうえで直してもらう**方が速い。
 
-### 4. タスクファイルを作る
+### 4. タスクを作る
 
 タスク名は**作業内容が分かる英小文字とハイフン** (`confirm-button-removal-survey` など)。
-`list/` に同名が無いか確認してから複製する。
 
 ```sh
-ls job/<案件名>/list/
-cp job/<案件名>/list/template.md job/<案件名>/list/<タスク名>.md
+raprid task add <案件名> <タスク名> <状態> "<タイトル>" [blockedBy]
 ```
 
-テンプレートの節構成 (タイトル / 内容 / 完了条件 / ログ / 結果) は変えない。
+このコマンドは既存 ID を検査して次の `T-001` 形式の ID を採番し、`tasks/<タスク名>/index.md` と
+状態索引 `status/<状態>/<タスク名> -> ../../tasks/<タスク名>` をまとめて作る。
+同名のタスクや索引があれば何も作らずに失敗する (終了コード 1、引数の誤りは 2)。
+
+作成された `index.md` の「内容」「完了条件」を会話の材料で埋める。
+雛形の節構成 (タイトル / 内容 / 完了条件 / 詳細 / 結果) は変えない。
+調査結果など長い記録は `index.md` に書かず、詳細 md に分ける。
+
+```sh
+raprid task note <案件名> <T-001> <詳細名> "<見出し>"   # 01-<詳細名>.md を作り「## 詳細」からリンク
+```
+
 書き方は下の「タスクファイルの書き方」に従う。
 
 **動作確認や手動テストを伴うタスクなら `test:` に手順書のパスを書く。**
@@ -98,20 +108,9 @@ cp job/<案件名>/list/template.md job/<案件名>/list/<タスク名>.md
 手順書がまだ無い場合は `test:` を空のままにし、
 **手順を書くこと自体を完了条件に入れる** (このスキルでは feature を作らない)。
 
-初期状態・createdAt・updatedAt・blockedBy を実体の frontmatter に書く。
-機械的な初期登録には`./job/add-task.sh <案件名> <タスク名> <状態> <タイトル> [blockedBy]`を使える。
-このスクリプトはIDの重複・欠落を検査し、次のID、実体、相対状態リンクをまとめて作成する。
 作成したパスと要点を報告し、判断が未確定の部分は明記する。登録依頼に対する完了前の再承認は不要。
 
-### 5. 状態ディレクトリにリンクを張る
-
-```sh
-ln -s ../../list/<タスク名>.md job/<案件名>/status/<状態>/<タスク名>.md
-```
-
-リンク先は**必ず `../../list/<タスク名>.md` という相対パス**にする。
-`todo/` `pending/` `progress/` `done/` はどれも `status/` 直下で同じ深さにあるため、
-相対パスにしておけば状態遷移で `mv` してもリンクが壊れない。
+### 5. 初期状態と待ちの相手を決める
 
 **`pending` で登録する場合は `blockedBy` に待っている相手を必ず書く**
 (`qa/Q-001`、`task/T-001`、別案件の`qa/<案件名>/Q-001`、または`other: <待ちの内容>`)。
@@ -124,18 +123,12 @@ ln -s ../../list/<タスク名>.md job/<案件名>/status/<状態>/<タスク名
 「リンク切れ」「未登録」として拾うまで気づけない。
 
 ```sh
-J="job/<案件名>"
-N="<タスク名>.md"
-
-for s in todo pending progress done; do
-  [ -L "$J/status/$s/$N" ] && echo "$s: $(readlink "$J/status/$s/$N")"
-done
-[ -e "$J/list/$N" ] && echo "実体あり: $J/list/$N"
-head -12 "$J/list/$N"
+raprid task list <案件名>      # 「要確認:」が出ないこと
+head -12 jobs/<案件名>/tasks/<タスク名>/index.md
 ```
 
 * リンクが 1 つの状態ディレクトリにだけ存在すること
-* `readlink` の結果が `../../list/<タスク名>.md` であること
+* `readlink` の結果が `../../tasks/<タスク名>` であること
 * リンク経由で中身が読めること (読めなければリンク切れ)
 * 実体の status とリンクの置き場所が一致し、pending の blockedBy が空でないこと
 
@@ -145,7 +138,7 @@ head -12 "$J/list/$N"
 このセッションのログがまだ無い場合だけ作成する。
 
 ```sh
-pnpm log:create codex # Claude Code では claude
+raprid log create codex # Claude Code では claude (pnpm log:create も同じ)
 ```
 
 * `index.md` の「結果」に、追加した案件とタスクを 1〜2 行で書く
@@ -170,16 +163,18 @@ pnpm log:create codex # Claude Code では claude
 | タイトル | 何をするタスクかを 1 行。末尾に課題番号を添える |
 | 内容 | 背景と目的。課題票があれば現状 / 対応方針 / 効果をそのまま引く。対象リポジトリと参照した時点のコミットも書く |
 | 完了条件 | チェックボックス (`* [ ]`) で並べる。済んだものは `[x]` にする |
-| ログ | フェーズ単位で「計画」と「実施内容」。調査タスクなら判明した事実を根拠パス付きで書く |
+| 詳細 | 詳細 md へのリンクの一覧。`raprid task note` が追加する |
 | 結果 | 現時点の結論。続きがあるなら「### 次にやること」を作って列挙する |
 
-**調査タスクでは「実施内容」が本体になる。**
+詳細 md (`raprid task note` で作る) はフェーズや調査ごとに 1 ファイルで、「計画」「実施内容」「判断」を書く。
+調査タスクなら判明した事実を根拠パス付きで書く。
+
+**調査タスクでは詳細 md の「実施内容」が本体になる。**
 判明した事実を、根拠となる `パス:行番号` とセットで書く。
 表が使える場面 (影響範囲の一覧など) では表にすると後から追いやすい。
 
 仕様判断が必要な論点が出てきたら、`結果` の「次にやること」に列挙し、
-**QA として起票するかを確認する** (`job/template/qa/list/template.md` を同じ案件の
-`qa/list/` に複製し、`qa/status/unresolved/` にリンクを張る。詳細は README.md)。
+**QA として起票するかを確認する** (`raprid qa add <案件名> <QA名> <確認先> "<質問>"`。詳細は README.md)。
 このスキルでは QA を勝手に作らない — 起票の粒度は人が決めた方がよい。
 
 ## 出力フォーマット
@@ -187,9 +182,11 @@ pnpm log:create codex # Claude Code では claude
 最後に何を作ったかを報告する。
 
 ```
-job/PROJ-123/
-├── list/confirm-button-removal-survey.md   # 実体
-└── status/progress/confirm-button-removal-survey.md -> ../../list/...
+jobs/PROJ-123/
+├── tasks/confirm-button-removal-survey/
+│   ├── index.md                            # 実体 (T-001)
+│   └── 01-survey.md                        # 調査の詳細
+└── status/progress/confirm-button-removal-survey -> ../../tasks/confirm-button-removal-survey
 
 logs/2026/08/19/<agent_name>/<session_id>/index.md に記録
 コミット: 3f2a1b0 PROJ-123 の job と調査タスクを追加

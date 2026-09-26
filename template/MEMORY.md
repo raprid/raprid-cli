@@ -6,13 +6,13 @@
 ## 現在の状況
 
 プロジェクト管理リポジトリの初期状態。案件・資料・submodule は未登録。
-agent の作業記録は `logs/<YYYY>/<MM>/<DD>/<agent_name>/<session_id>/`（`pnpm log:create`）。
+agent の作業記録は `logs/<YYYY>/<MM>/<DD>/<agent_name>/<session_id>/`（`raprid log create`）。案件は `jobs/<案件名>/`（`raprid job create`）。
 
 ## 進行中の job
 
-### other (`job/other/`)
+### other (`jobs/other/`)
 
-- タスク・QAなし（[詳細](job/other/MEMORY.md)）
+- タスク・QAなし（[詳細](jobs/other/MEMORY.md)）
 
 ## 直近の活動
 
@@ -28,5 +28,5 @@ agent の作業記録は `logs/<YYYY>/<MM>/<DD>/<agent_name>/<session_id>/`（`p
 
 ## トピック MEMORY
 
-- [other](job/other/MEMORY.md)
+- [other](jobs/other/MEMORY.md)
 - [docs](docs/MEMORY.md) / [submodule](repos/MEMORY.md)

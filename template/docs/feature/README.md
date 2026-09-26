@@ -14,7 +14,7 @@ docs/feature/
 
 手順はタスクより長生きする。タスクが `done` になっても仕様は残り、
 次の案件で同じ画面をテストするときにそのまま使える。
-だから `job/` の中ではなくここに置く。
+だから `jobs/` の中ではなくここに置く。
 
 ## ディレクトリとファイルの切り方
 
@@ -33,7 +33,7 @@ docs/feature/admin/item-edit/
 * ファイル名は `<章番号 2 桁>-<内容>.feature`。章番号を持たせると
   `ls` の順序が実行順になり、`@P-3-2` の `3` からファイルが引ける
 * **`_` で始まるファイルは実行対象にしない。** 同じディレクトリの全 feature に効く
-  `Background:` と共通操作を置く (`logs/template/_.md` と同じ `_` の使い方)
+  `Background:` と共通操作を置く (`scripts/templates/task/_.md` と同じ `_` の使い方)
 * その章だけの前提は、そのファイルに `Background:` を書いてよい
 
 ## 記法
@@ -95,16 +95,16 @@ test:
 **`@ID` とタスクの `## 完了条件` のチェックは 1:1 で対応させる。** 検証はスクリプトで行う。
 
 ```sh
-./.claude/skills/verify-task/check_scenario_ids.sh job/<案件名>/list/<タスク名>.md
+./.claude/skills/verify-task/check_scenario_ids.sh jobs/<案件名>/tasks/<タスク名>/index.md
 ```
 
 実行は `/verify-task` (対話で人が確認) か `/run-manual-test` (Chrome で実行して GIF を撮る)。
-結果と GIF は `job/<案件名>/assets/<タスク名>/<実行日>/` に残る
-([README.md](../../README.md) の `job/` の節)。
+結果と GIF は `jobs/<案件名>/tasks/<タスク名>/assets/<実行日>/` に残る
+([README.md](../../README.md) の `jobs/` の節)。
 
 ## 案件固有の自動実行コード
 
-Playwright などの実行コードが必要なら `job/<案件名>/assets/e2e/` に置く。
+Playwright などの実行コードが必要なら `jobs/<案件名>/assets/e2e/` に置く。
 **`.feature` が仕様の正で、spec は機械実行用の写し**とし、仕様変更は feature から反映する。
 spec の test title にはシナリオ ID を入れ、手順との対応を追跡できるようにする。
 実行方法、認証状態の作り方、対象環境、対応確認コマンドは同ディレクトリの README に記載する。

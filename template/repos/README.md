@@ -22,7 +22,7 @@ repos/<リポジトリ名>/
 既存のローカルブランチと、origin に存在する `main` / `dev` / `stg` / `prod` は次で展開する。
 
 ```sh
-./repos/setup_worktrees.sh <リポジトリ名>
+raprid repo setup-worktrees <リポジトリ名>
 ```
 
 全リモートブランチを一括展開しない。必要になったブランチだけ引数で追加する。
@@ -42,7 +42,7 @@ Claude Code / Codex 共通の運用上の範囲。sandbox や Git の権限を�
 ## submodule の追加
 
 ```sh
-./repos/add_submodule.sh <SSH URL> [--dir_name <名前>] <権限>
+raprid repo add <SSH URL> [--dir-name <名前>] <権限>
 ```
 
 `repos/<名前>/{repo/,.worktrees/,MEMORY.md,BRANCH.md,WORKTREES.md}` を作り、上の権限表へ追記する。

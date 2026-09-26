@@ -11,7 +11,7 @@
 - 呼び出しは Claude Code では `/skill-name`、Codex では `$skill-name`。
   本文中の `/reload-project` などは、使用中のエージェントの呼び方に読み替える。
 - `SKILL.md` の Markdown リンクはそのファイルの場所を基準に解決する。
-  `job/`、`docs/`、`logs/` は管理リポジトリのルートを基準に解決する。
+  `jobs/`、`docs/`、`logs/`、`scripts/` は管理リポジトリのルートを基準に解決する。
 - submodule のローカル動作確認は `repos/<名前>/repo/`、作業ブランチは
   `repos/<名前>/.worktrees/<ブランチ名>/`。同階層の `MEMORY.md` で現在状態を確認し、
   ブランチ操作を伴う場合は `BRANCH.md` と `WORKTREES.md` も読む。
@@ -46,7 +46,7 @@
   ネットワーク取得・スクリーンショットの機能に読み替える。
 - `Read tool` で画像を見る指示は、Codex では画像閲覧ツールを使う。ファイルの存在や寸法を
   調べただけでは目視したことにならない。
-- Chrome 拡張が無ければ、案件固有の `job/<案件名>/assets/e2e/README.md` が存在するときは
+- Chrome 拡張が無ければ、案件固有の `jobs/<案件名>/assets/e2e/README.md` が存在するときは
   そこに記載された実行経路を使える。別のブラウザツールでも同じ手順・期待値・証跡を満たすこと。
   ローカル DB を操作する fixture を dev / staging / 本番に転用しない。
 - ログイン・MFA は人が行う。認証情報を会話・ログ・Git に残さない。

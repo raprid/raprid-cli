@@ -1,13 +1,13 @@
 # raprid-cli
 
-プロジェクト管理リポジトリの初期状態を生成する `raprid` CLI。
+プロジェクト管理リポジトリの初期状態を生成し、管理操作のサブコマンドを実行する `raprid` CLI。
 雛形は [project_template](https://github.com/shono1103/project_template) の特定コミットを同梱している。
 npm レジストリには公開せず、GitHub Release に添付した tarball からインストールする。
 
 ## 必要なもの
 
 * macOS または Linux (Windows は未対応。シンボリックリンクを含むため)
-* Node.js 24 以上 (生成先の `pnpm log:create` も Node.js 24 の型除去で `.ts` を直接実行する)
+* Node.js 24 以上 (生成先の `scripts/cli.ts` も Node.js 24 の型除去で `.ts` を直接実行する)
 * Git (生成先の `git init` に使う。無くても生成はできる)
 * pnpm (生成先で依存を入れるとき)
 
@@ -21,7 +21,7 @@ raprid --version
 特定の版を入れる場合は、版ごとの tarball を指定する。
 
 ```sh
-npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.1.1/raprid-0.1.1.tgz
+npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.2.0/raprid-0.2.0.tgz
 ```
 
 `npm install -g github:raprid/raprid-cli` は使わない。git 依存のインストールでは npm が `-g` を
@@ -31,7 +31,7 @@ npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.1.1/rap
 ```sh
 pnpm install
 npm pack                          # prepack でビルドし raprid-<version>.tgz を作る (private のため npm publish はできない)
-npm install -g ./raprid-0.1.1.tgz
+npm install -g ./raprid-0.2.0.tgz
 ```
 
 ## 使い方
@@ -43,14 +43,54 @@ raprid init my-project --dry-run  # 衝突の確認だけ行う
 raprid init my-project --no-git   # git init しない
 ```
 
-生成後は表示される手順に従い、`pnpm install`、`pnpm log:create claude` を実行し、
+生成後は表示される手順に従い、`pnpm install`、`raprid log create claude` を実行し、
 `README.md` と `CLAUDE.md` を読んで使い始める。
+
+### 管理操作のサブコマンド
+
+`init` 以外は、生成したプロジェクト (管理リポジトリ) の `scripts/cli.ts` に処理を委譲する。
+処理の実体はプロジェクトと一緒に版管理され、CLI はルートの判定と版の確認だけを行う。
+
+```sh
+raprid job create PROJ-123
+raprid task add PROJ-123 api-setup todo "API を用意する"
+raprid task move PROJ-123 T-001 progress
+raprid task note PROJ-123 T-001 investigation "既存 API の調査"
+raprid qa add PROJ-123 deploy-policy customer "本番反映の手順はこれでよいか"
+raprid log create claude
+raprid repo add git@github.com:example/foo.git 77
+```
+
+コマンドの一覧は管理リポジトリの中で `raprid <group> --help`、詳細は生成された README.md を参照。
+CLI を入れていない環境では `pnpm raprid <group> <command>` か `node scripts/cli.ts <group> <command>` で同じ処理を呼べる。
+
+* **ルートの判定**: カレントディレクトリから上へ、`scripts/package.json` (`raprid.protocol` を持つもの) と
+  `scripts/cli.ts` があるディレクトリを探し、最も近いものを使う。Git リポジトリの境界
+  (`.git` のあるディレクトリ) より上は探さない。子ディレクトリから実行しても操作先はそのルートになる。
+* **版の互換性**: この CLI が対応する委譲プロトコルは `1`。プロジェクトの `protocol` が新しければ CLI の更新を、
+  古ければプロジェクトの `scripts/` の更新を案内して終了する (終了コード 1)。
+* **引数・入出力**: 引数はシェルを通さずにそのまま渡し、標準入出力と終了コードも引き継ぐ。
+
+### 旧構成のプロジェクトを移行する
+
+raprid 0.1.x で生成したプロジェクトなど、`job/<案件名>/list/` と `job/*.sh` を使う旧構成には委譲先の
+`scripts/` が無い。`raprid job migrate` だけは CLI に同梱した移行処理 (雛形の `scripts/`) を一時展開して実行し、
+移行と同時に `scripts/` を導入する。移行後は通常どおり委譲する。
+
+```sh
+raprid job migrate --dry-run                 # 変換計画 (パスの対応・書き換えるリンク・保留項目) を表示
+raprid job migrate --apply --plan <ハッシュ> # 表示した計画と一致する場合だけ実行する
+raprid job migrate --restore <移行ID>        # 移行前に戻す
+```
+
+`raprid init` を旧プロジェクトに実行して代用しない (衝突で止まる)。移行の仕様と制約は生成された README.md の
+「旧構成からの移行」を参照。旧パスを直接読む外部ツールは移行後に新しいパスへ合わせる必要がある。
 
 ### 生成するもの・しないもの
 
 生成するのは同梱した雛形 (`template/`) の内容だけ。
 README、エージェント向け指示 (CLAUDE.md / AGENTS.md)、共有スキル (`.claude/skills/`、`.agents/skills` のリンク)、
-`docs/`、`logs/` (作成スクリプトと雛形)、`job/` (Markdown 方式の案件管理と操作スクリプト)、`repos/` の管理スクリプト、
+`docs/`、`logs/`、`jobs/other/` (Markdown 方式の案件管理)、`scripts/` (サブコマンドの実装・雛形・テスト)、`repos/`、
 `package.json` などを含む。
 
 次は持ち込まない。
@@ -85,7 +125,7 @@ README、エージェント向け指示 (CLAUDE.md / AGENTS.md)、共有スキ�
 | コード | 意味 |
 | --- | --- |
 | 0 | 成功 (`--dry-run` で衝突が無い場合を含む) |
-| 1 | 生成できなかった (衝突、書き込み失敗、生成先がディレクトリではない・確認できない) |
+| 1 | 生成・操作できなかった (衝突、書き込み失敗、生成先がディレクトリではない・確認できない、管理リポジトリが無い、版が非対応) |
 | 2 | 引数の誤り |
 
 ## 更新
@@ -98,6 +138,7 @@ npm install -g --prefer-online https://github.com/raprid/raprid-cli/releases/lat
 ```
 
 **`raprid init` は新規作成専用で、生成済みのプロジェクトは更新しない。**
+CLI を更新しても、サブコマンドの処理は各プロジェクトの `scripts/` が行うため、プロジェクト側の動作は変わらない。
 生成後のプロジェクトは独立したリポジトリとして運用する。雛形の変更を既存プロジェクトへ取り込む場合は、
 `template-source.json` が指すコミットと project_template の差分を見て、必要なものを手で反映する。
 
@@ -105,7 +146,7 @@ npm install -g --prefer-online https://github.com/raprid/raprid-cli/releases/lat
 
 ```text
 .
-├── src/                      # CLI 本体 (cli.ts / init.ts / bundle.ts)
+├── src/                      # CLI 本体 (cli.ts / init.ts / delegate.ts / bundle.ts)
 ├── scripts/
 │   ├── sync-template.ts      # project_template から template/ を作り直す
 │   └── bundle-template.ts    # template/ を dist/template.json にまとめる (build の一部)
@@ -147,7 +188,7 @@ npm pack はシンボリックリンクや `.gitignore` をそのまま同梱で
 ```sh
 npm pack --dry-run                                    # 同梱一覧 (dist/ と package.json など)
 prefix="$(mktemp -d)"
-npm install -g --prefix "$prefix" ./raprid-0.1.1.tgz
+npm install -g --prefix "$prefix" ./raprid-0.2.0.tgz
 "$prefix/bin/raprid" init "$(mktemp -d)/sample"
 ```
 
@@ -159,8 +200,8 @@ npm install -g --prefix "$prefix" ./raprid-0.1.1.tgz
 ```sh
 pnpm test
 npm pack
-cp raprid-0.1.1.tgz raprid.tgz
-gh release create v0.1.1 raprid.tgz raprid-0.1.1.tgz --title v0.1.1 --notes "雛形: project_template <コミット>"
+cp raprid-0.2.0.tgz raprid.tgz
+gh release create v0.2.0 raprid.tgz raprid-0.2.0.tgz --title v0.2.0 --notes "雛形: project_template <コミット>"
 ```
 
 ## ライセンス

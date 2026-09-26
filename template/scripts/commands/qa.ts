@@ -1,0 +1,137 @@
+import { parse, singleLine } from "../lib/args.ts";
+import { CliError, UsageError } from "../lib/errors.ts";
+import { localDate } from "../lib/fsutil.ts";
+import { assertNameFree, assertStatusDirs, createItem, listItems, moveItem, sectionSummary } from "../lib/items.ts";
+import { Job, validateItemName } from "../lib/jobs.ts";
+import { fencedLines, findSection, splitLines } from "../lib/markdown.ts";
+import { projectRoot } from "../lib/root.ts";
+import { blockedByLines, renderTemplate } from "../lib/template.ts";
+
+export const usage = `使い方:
+  raprid qa add <案件名> <QA名> <確認先> <質問内容> [blockedBy]
+  raprid qa list [<案件名>]
+  raprid qa resolve <案件名> <QA IDまたは名前> <回答>
+  raprid qa move <案件名> <QA IDまたは名前> unresolved
+  raprid qa move <案件名> <QA IDまたは名前> resolved <回答>
+
+確認先: customer | internal | undecided
+
+例:
+  raprid qa add PROJ-123 correction-policy customer "補正方法はこの方針でよいか"
+  raprid qa resolve PROJ-123 Q-001 "確認環境から実行する"
+  raprid qa move PROJ-123 Q-001 unresolved`;
+
+function add(argv: string[]): void {
+  const { positionals } = parse(argv, {}, usage);
+  if (positionals.length < 4 || positionals.length > 5) throw new UsageError(usage);
+  const [jobName, rawName, askTo, rawQuestion, rawBlockedBy] = positionals;
+  const name = validateItemName("qa", rawName);
+  if (!["customer", "internal", "undecided"].includes(askTo)) throw new UsageError(`確認先はcustomer、internal、undecidedのいずれかです: ${askTo}`);
+  const question = singleLine(rawQuestion, "質問内容", true)!;
+  const blockedBy = singleLine(rawBlockedBy, "blockedBy", false);
+  const job = Job.existing(projectRoot(), jobName);
+  assertStatusDirs(job, "qa");
+  job.lock(() => {
+    assertNameFree(job, "qa", name);
+    const id = job.nextId("qa");
+    const content = renderTemplate("qa/index.md", { id, date: localDate(), job: job.name, askTo, question, blockedBy: blockedByLines(blockedBy) });
+    const item = createItem(job, "qa", name, content, "unresolved");
+    console.log(`作成: ${id} / ${job.display(item.index)}`);
+    console.log(`索引: jobs/${job.name}/qa/status/unresolved/${name} -> ${job.linkTarget("qa", name)}`);
+    console.log("補足や回答は必要に応じて index.md へ追記し、資料は同じディレクトリに置いてください。");
+  });
+}
+
+function list(argv: string[]): void {
+  const { positionals } = parse(argv, {}, usage);
+  if (positionals.length > 1) throw new UsageError(usage);
+  const root = projectRoot();
+  const jobs = positionals.length === 1 ? [Job.existing(root, positionals[0])] : Job.all(root);
+  const blocks = jobs.map((job) =>
+    listItems(job, "qa", (item) => `${sectionSummary(item, "質問内容") ?? item.name} (${item.tryField("askTo") || "確認先未設定"})`).join("\n"),
+  );
+  console.log(blocks.join("\n\n"));
+}
+
+// 回答欄の先頭に回答を入れる。既存のメモは残し、"未回答" の仮置きだけを置き換える
+function insertAnswer(text: string, answer: string, source: string): string {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = splitLines(text);
+  const section = findSection(lines, 2, "回答内容");
+  if (!section) throw new CliError(`回答内容の見出しがありません: ${source}`);
+  const fenced = fencedLines(lines);
+  let next = section.start + 1;
+  while (next < section.end && lines[next].trim() === "") next++;
+  const rest = lines.slice(next);
+  if (next < section.end && !fenced[next] && ["未回答", "未回答。"].includes(lines[next].trim())) {
+    rest.shift();
+    while (rest.length > 0 && rest[0].trim() === "") rest.shift();
+  }
+  const head = lines.slice(0, section.start + 1);
+  const separator = rest.length > 0 && rest[0].trim() !== "" ? [""] : [];
+  return [...head, "", answer, ...separator, ...(rest.length > 0 ? rest : [""])].join(eol);
+}
+
+function transition(jobName: string, selector: string, status: string, answer: string | undefined): void {
+  const job = Job.existing(projectRoot(), jobName);
+  job.lock(() => {
+    const item = job.find("qa", selector);
+    assertStatusDirs(job, "qa");
+    const fm = item.frontmatter();
+    const old = fm.get("status") ?? "";
+    if (!["unresolved", "resolved"].includes(old)) throw new CliError(`実体のstatusが不正です: ${old || "未設定"}`);
+    for (const key of ["updatedAt", "resolvedAt"]) {
+      if (!fm.has(key)) throw new CliError(`frontmatterに${key}がありません: ${job.display(item.index)}`);
+    }
+    const today = localDate();
+    fm.set("status", status);
+    fm.set("updatedAt", today);
+    fm.set("resolvedAt", status === "resolved" ? today : "");
+    if (status === "resolved" && fm.has("blockedBy")) fm.set("blockedBy", []);
+    let updated = fm.toString();
+    if (!findSection(splitLines(updated), 2, "回答内容")) throw new CliError(`回答内容の見出しがありません: ${job.display(item.index)}`);
+    if (answer !== undefined) updated = insertAnswer(updated, answer, job.display(item.index));
+    const link = moveItem(item, status, updated);
+    console.log(`変更: ${fm.get("id")} / ${item.name} / ${old} -> ${status}`);
+    console.log(`実体: ${job.display(item.index)}`);
+    console.log(`索引: ${job.display(link)} -> ${job.linkTarget("qa", item.name)}`);
+  });
+}
+
+function move(argv: string[]): void {
+  const { positionals } = parse(argv, {}, usage);
+  if (positionals.length < 3 || positionals.length > 4) throw new UsageError(usage);
+  const [jobName, selector, status, rawAnswer] = positionals;
+  if (status === "unresolved") {
+    if (positionals.length !== 3) throw new UsageError("unresolvedへの変更では回答を指定しません");
+    transition(jobName, selector, status, undefined);
+  } else if (status === "resolved") {
+    const answer = singleLine(rawAnswer, "回答", false);
+    if (!answer) throw new UsageError("resolvedへの変更には空でない1行の回答が必要です");
+    transition(jobName, selector, status, answer);
+  } else {
+    throw new UsageError(`状態はunresolvedまたはresolvedです: ${status}`);
+  }
+}
+
+function resolve(argv: string[]): void {
+  const { positionals } = parse(argv, {}, usage);
+  if (positionals.length !== 3) throw new UsageError(usage);
+  move([positionals[0], positionals[1], "resolved", positionals[2]]);
+}
+
+export function run(argv: string[]): void {
+  const [command, ...rest] = argv;
+  const commands: Record<string, (args: string[]) => void> = { add, list, move, resolve };
+  if (command === undefined || command === "--help" || command === "-h" || command === "help") {
+    console.log(usage);
+    if (command === undefined) process.exitCode = 2;
+    return;
+  }
+  if (!commands[command]) throw new UsageError(`不明なコマンド: qa ${command}\n${usage}`);
+  if (rest.includes("--help") || rest.includes("-h")) {
+    console.log(usage);
+    return;
+  }
+  commands[command](rest);
+}

@@ -28,11 +28,13 @@ find logs -mindepth 3 -maxdepth 3 -type d -path 'logs/[0-9]*' | sort | tail -3 \
   | while read -r d; do find "$d" -mindepth 2 -maxdepth 2 -type d; done | sort
 
 # 案件の一覧
-find job -mindepth 1 -maxdepth 1 -type d -not -name template | sort
+find jobs -mindepth 1 -maxdepth 1 -type d -not -name '.*' | sort
 
-# タスク・QA の実体 (状態は各 frontmatter から読む)
-rg --files job -g '*.md' -g '!template.md' | rg '^job/[^/]+/list/[^/]+\.md$'
-rg --files job -g '*.md' -g '!template.md' | rg '^job/[^/]+/qa/list/[^/]+\.md$'
+# タスク・QA の一覧と索引の点検 (状態は各 index.md の frontmatter から読む)
+raprid task list    # CLI が無ければ pnpm raprid task list / node scripts/cli.ts task list
+raprid qa list
+find jobs -path '*/tasks/*/index.md' | sort
+find jobs -path '*/qa/*/index.md' -not -path '*/qa/status/*' | sort
 
 # ドキュメント: 分類ごとの案件ディレクトリ、Gherkin feature / ファイル
 find docs -mindepth 2 -not -name '.gitkeep' -not -name 'README.md' | sort
@@ -53,12 +55,12 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 * **ドキュメント**: official / unofficial / personal は分類・案件ごとに数え、
   `docs/feature/` は現行・archived別に `.feature` を数える。xlsx 等の更新内容は案件の README を索引として読む。
   ディレクトリ数とファイル数を混同せず、数える対象を明記する。全画像を読む必要はない。
-* **タスク**: `list/` の実体の frontmatter `id`と`status`を読み、案件内の固定IDを添えて分類する。progress は
-  「内容」「完了条件」「結果」を読む。todo は名前、done は件数でよい。
+* **タスク**: `tasks/<名前>/index.md` の frontmatter `id`と`status`を読み、案件内の固定IDを添えて分類する。progress は
+  `index.md` の「内容」「完了条件」「結果」を読み、必要なら「詳細」から最新の詳細 md を読む。todo は名前、done は件数でよい。
   pending は `blockedBy` を添える。索引の無い実体も含め、索引との不一致は報告する。
-* **QA**: 各 `job/<案件名>/qa/list/` の実体のfrontmatter `id`と`status`を読み、`status: unresolved`を未解決として扱う。
+* **QA**: 各 `jobs/<案件名>/qa/<名前>/index.md` のfrontmatter `id`と`status`を読み、`status: unresolved`を未解決として扱う。
   「質問内容」を要約し、確認先・依存関係を添える。回答欄の空白やリンク位置で判定しない。
-  frontmatter の `job` と親ディレクトリが一致するかも確認する。案件外は `job/other/qa/` に置く。
+  frontmatter の `job` と親ディレクトリが一致するかも確認する。案件外は `jobs/other/qa/` に置く。
 * **submodule**: `repos/<名前>/repo/` の現在ブランチ・HEAD・作業ツリー、
   `git worktree list` で `.worktrees/` のブランチと状態、同階層の `BRANCH.md`・`WORKTREES.md`、
   `repos/README.md` の権限を確認する。
@@ -66,16 +68,16 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 
 配列は `blockedBy: [qa/xxx]` と複数行形式の両方を読む。
 タスクIDは案件内の`T-001`形式、QA IDは`Q-001`形式を正とし、欠落・形式不正・重複は報告する。
-`template.md` はタスク・QA の件数に含めない。索引の点検は list-task / list-qa と同じ基準。
+詳細 md はタスク・QA の件数に含めない。索引の点検は list-task / list-qa と同じ基準。
 
-タスクと QA はどちらも**実体が `list/` にある**。タスクの状態索引は
-`status/` 配下から `../../list/<名前>.md`、QA の状態索引も `qa/status/` から `../../list/<名前>.md` を指す
+タスクと QA はどちらも**実体がディレクトリ**で、frontmatter は `index.md` にある。タスクの状態索引は
+`status/` 配下から `../../tasks/<名前>`、QA の状態索引は `qa/status/` から `../../<名前>` を指す
 相対シンボリックリンクである (詳細は README.md)。
 
 | 対象 | 実体 | 状態ディレクトリ |
 | --- | --- | --- |
-| タスク | `job/<案件名>/list/` | `status/{todo,pending,progress,done}/` |
-| QA | `job/<案件名>/qa/list/` | `qa/status/{unresolved,resolved}/` |
+| タスク | `jobs/<案件名>/tasks/<名前>/index.md` | `status/{todo,pending,progress,done}/` |
+| QA | `jobs/<案件名>/qa/<名前>/index.md` | `qa/status/{unresolved,resolved}/` |
 
 ### 2. MEMORY.md を生成する
 
@@ -96,13 +98,13 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 ### 3. トピック MEMORY を生成する
 
 対象ディレクトリごとに `MEMORY.md` を作成または全置換する。内容はそのディレクトリの目的、主要な状態、参照先に絞り、**500 トークン以内**にする。
-対象は存在する `job/*`、`docs/{official,unofficial,personal}/*`、`docs/feature/`、`repos/`、
-`repos/*/`。`template/`、`repos/*/repo/` 内部、`logs/` は対象外とする。
+対象は存在する `jobs/*`、`docs/{official,unofficial,personal}/*`、`docs/feature/`、`repos/`、
+`repos/*/`。`scripts/`、`jobs/.locks/`、`repos/*/repo/` 内部、`logs/` は対象外とする。
 案件はタスクの status 件数・progress / pending・関連 QA、docs は資料とGherkin正本の索引、
 `repos/MEMORY.md` は全submoduleの索引、`repos/<名前>/MEMORY.md` は
 `repo/` の動作確認ブランチと `.worktrees/` の個別の現在状態、
-案件固有の実行コードは該当する `job/<案件名>/MEMORY.md` に記載する。
-未解決 QA は対応する `job/<案件名>/MEMORY.md` に記載する。
+案件固有の実行コードは該当する `jobs/<案件名>/MEMORY.md` に記載する。
+未解決 QA は対応する `jobs/<案件名>/MEMORY.md` に記載する。
 トップレベルの全体状況を重複して書かず、トップレベル MEMORY から各トピック MEMORY へリンクする。
 
 ### 4. サイズを検証する
@@ -149,15 +151,15 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 
 ## 進行中の job
 
-### <案件名> (`job/<案件名>/`)
+### <案件名> (`jobs/<案件名>/`)
 
-- progress / todo / pending: 件数と `job/<案件名>/MEMORY.md`
+- progress / todo / pending: 件数と `jobs/<案件名>/MEMORY.md`
 - done: N 件
 
 ## 直近の活動
 
 - YYYY-MM-DD (`logs/<year>/<month>/<day>/<agent_name>/<session_id>/index.md`) — 結果と残作業を1行
-- 未解決 QA N 件（各 `job/<案件名>/MEMORY.md`）
+- 未解決 QA N 件（各 `jobs/<案件名>/MEMORY.md`）
 
 ## docs
 
@@ -169,7 +171,7 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 
 ## トピック MEMORY
 
-- `job/*/MEMORY.md`
+- `jobs/*/MEMORY.md`
 - `docs/*/MEMORY.md`
 - `repos/MEMORY.md`
 ```

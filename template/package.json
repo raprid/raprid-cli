@@ -8,9 +8,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "log:create": "node logs/create_log.ts",
+    "raprid": "node scripts/cli.ts",
+    "log:create": "node scripts/cli.ts log create",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"logs/*.test.ts\""
+    "test": "node --test \"scripts/test/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

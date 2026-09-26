@@ -1,6 +1,6 @@
 ---
 name: task-transition
-description: job/ 配下の既存タスクを着手・完了・待ち・再開へ変更する。frontmatter の status と日付・依存関係、状態索引の相対リンクを一緒に更新する。新規登録は add-task、一覧表示は list-task を使う。
+description: jobs/ 配下の既存タスクを着手・完了・待ち・再開へ変更する。frontmatter の status と日付・依存関係、状態索引の相対リンクを一緒に更新する。新規登録は add-task、一覧表示は list-task を使う。
 ---
 
 # task-transition
@@ -10,8 +10,8 @@ Claude Code と Codex のどちらでも本体が実行でき、サブエージ�
 
 ## 1. 対象と根拠を確認する
 
-- 実体は `job/<案件名>/list/<タスク名>.md`。指定には案件内で固定の`T-001`形式のIDを優先し、
-  後方互換としてファイル名の完全一致も受け付ける。
+- 実体は `jobs/<案件名>/tasks/<タスク名>/index.md`。指定には案件内で固定の`T-001`形式のIDを優先し、
+  タスクのディレクトリ名の完全一致も受け付ける。
   案件とタスクが会話から一意なら質問せず進める。
 - 現在の状態は実体の frontmatter `status` を読む。リンク位置だけで決めない。
 - todo は着手可能、progress は着手中、pending は外部待ち、done は完了。
@@ -25,7 +25,7 @@ Claude Code と Codex のどちらでも本体が実行でき、サブエージ�
 ## 2. 書き換える前に索引を確認する
 
 `status/{todo,pending,progress,done}/` の同名リンクを調べ、
-相対リンク `../../list/<同名>.md` が一つだけあること、
+相対リンク `../../tasks/<同名>` が一つだけあること、
 リンク先を読めること、移動先が空いていることを確認する。
 移動先の壊れたリンクも衝突になるので `test -e` と `test -L` の両方を見る。
 
@@ -35,25 +35,27 @@ Claude Code と Codex のどちらでも本体が実行でき、サブエージ�
 
 ## 3. 実体とリンクを更新する
 
-機械的な更新には次を使う。
+機械的な更新には次を使う (CLI が無ければ `pnpm raprid task move` か `node scripts/cli.ts task move`)。
 
 ```sh
-./job/task-transition.sh <案件名> <タスクIDまたは名前> <変更後状態> [blockedBy]
+raprid task move <案件名> <タスクIDまたは名前> <変更後状態> [blockedBy]
 ```
 
-このスクリプトはIDと状態索引を検証し、frontmatterと相対リンクを一体で更新する。
+このコマンドはIDと状態索引を検証し、frontmatterと相対リンクを一体で更新する。
+未知の項目・コメント・本文は変更せず、途中で失敗した場合は自分の変更だけを戻す。
 ただし、`done`にしてよいか、`pending`の理由が妥当かという判断は実行前にこのスキル側で行う。
+判断根拠は `raprid task note` で作る詳細 md か、`index.md` の「結果」に書く。
 
-実体ファイルは移動しない。使用環境の編集ツールで次を更新する。
+コマンドが使えない場合は、実体を移動せず、使用環境の編集ツールで次を更新する。
 
 - `status`: 遷移先。
 - `updatedAt`: 作業日 (YYYY-MM-DD)。
 - `completedAt`: done なら完了日。done から再開した場合は空にする。
 - `blockedBy`: pending なら待ちの相手。待ちが解消した場合は空にする。
-- `createdAt` / `test` / 過去のログは保持する。判断根拠を今回のログに追記する。
+- `createdAt` / `test` / 過去の詳細 md は保持する。判断根拠を詳細 md か「結果」に追記する。
 
 対応するリンクを `status/` 内で `mv` するか、索引が無ければ
-`ln -s ../../list/<名前>.md job/<案件名>/status/<状態>/<名前>.md` で作る。
+`ln -s ../../tasks/<名前> jobs/<案件名>/status/<状態>/<名前>` で作る。
 実体とリンクの間で失敗した場合は、変更前の内容を使って自分の変更だけを戻し、
 不一致を残したまま完了と報告しない。既存のユーザー変更は保持する。
 

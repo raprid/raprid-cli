@@ -41,7 +41,11 @@ logs/.locks/
 
 # 案件固有の Playwright
 # .auth/ には認証済みの cookie が入るので確実に無視する
-job/*/assets/e2e/node_modules/
-job/*/assets/e2e/.auth/
-job/*/assets/e2e/test-results/
-job/*/assets/e2e/playwright-report/
+jobs/*/assets/e2e/node_modules/
+jobs/*/assets/e2e/.auth/
+jobs/*/assets/e2e/test-results/
+jobs/*/assets/e2e/playwright-report/
+
+# raprid (案件操作のロックと移行時の退避先)
+jobs/.locks/
+.raprid-migrate/

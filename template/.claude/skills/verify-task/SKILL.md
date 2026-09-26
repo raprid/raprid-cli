@@ -11,7 +11,7 @@ description: docs/feature/ 配下の Gherkin 手順を人に提示し、本人�
 このスキルはブラウザを触らない (エージェントが自分で操作するのは run-manual-test の担当)。
 
 手順の実体は `docs/feature/<領域>/<機能>/<章>.feature`、タスクとの対応はタスク md の
-frontmatter `test:`、結果は `job/<案件名>/assets/<タスク名>/<実行日>/`。
+frontmatter `test:`、結果は `jobs/<案件名>/tasks/<タスク名>/assets/<実行日>/`。
 記法は [docs/feature/README.md](../../../docs/feature/README.md) に従う。
 
 **エージェントが代わりに判断しないのが肝。** 画面を見ているのは人だけなので、
@@ -33,8 +33,8 @@ frontmatter `test:`、結果は `job/<案件名>/assets/<タスク名>/<実行�
 ディレクトリなら `_` で始まらない `.feature` をファイル名順に全部。
 
 ```sh
-J="job/<案件名>"
-sed -n '/^---$/,/^---$/p' "$J/list/<タスク名>.md"
+T="jobs/<案件名>/tasks/<タスク名>"
+sed -n '/^---$/,/^---$/p' "$T/index.md"
 ls docs/feature/<領域>/<機能>/
 ```
 
@@ -107,12 +107,12 @@ SQL は `sh` か `sql` のフェンスで貼り、そのままコピーできる
 
 ### 5. 結果を書く
 
-`assets/<タスク名>/<実行日>/result.md` を作る。同じ日に2回目を回す場合は
+タスク内の `assets/<実行日>/result.md` を作る。同じ日に2回目を回す場合は
 `<実行日>-2/` のように連番を足す (上書きしない)。
 
 ```sh
-J="job/<案件名>"
-mkdir -p "$J/assets/<タスク名>/$(date +%F)"
+T="jobs/<案件名>/tasks/<タスク名>"
+mkdir -p "$T/assets/$(date +%F)"
 ```
 
 書式は「[出力フォーマット](#出力フォーマット)」を参照。あわせてタスク md を直す。
@@ -132,7 +132,7 @@ mkdir -p "$J/assets/<タスク名>/$(date +%F)"
 最後に 1:1 対応を検証する。
 
 ```sh
-./.claude/skills/verify-task/check_scenario_ids.sh job/<案件名>/list/<タスク名>.md
+./.claude/skills/verify-task/check_scenario_ids.sh jobs/<案件名>/tasks/<タスク名>/index.md
 ```
 
 ### 6. 次の一手を出す
@@ -184,11 +184,12 @@ mkdir -p "$J/assets/<タスク名>/$(date +%F)"
 会話への報告。
 
 ```
-job/PROJ-123/list/item-edit-manual-test.md
+jobs/PROJ-123/tasks/item-edit-manual-test/index.md
   完了条件: [x] 2 / [ ] 1 / [-] 1 を更新
-  実施内容: フェーズ 4 として結果表を追記
+jobs/PROJ-123/tasks/item-edit-manual-test/04-manual-test.md
+  実施内容: 結果表を記録 (raprid task note で作成)
 
-job/PROJ-123/assets/item-edit-manual-test/2026-01-15/result.md
+jobs/PROJ-123/tasks/item-edit-manual-test/assets/2026-01-15/result.md
 
 check_scenario_ids.sh: 1:1 で対応している
 環境の復元: 1 件すべて復元済み

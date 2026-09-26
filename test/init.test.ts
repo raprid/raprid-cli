@@ -54,7 +54,9 @@ test("空のディレクトリに雛形を生成し git init する", () => {
     assert.ok(lstatSync(join(work, entry.path)), entry.path);
   }
   assert.equal(readlinkSync(join(work, ".agents", "skills")), "../.claude/skills");
-  assert.ok(statSync(join(work, "job", "add-task.sh")).mode & 0o100);
+  assert.ok(existsSync(join(work, "scripts", "cli.ts")));
+  assert.ok(existsSync(join(work, "jobs", "other", "status", "todo", ".gitkeep")));
+  assert.equal(existsSync(join(work, "job")), false);
   assert.ok(existsSync(join(work, ".gitignore")));
   assert.ok(existsSync(join(work, ".git")));
   assert.match(result.stdout, /git init を実行しました/);
@@ -212,16 +214,18 @@ test("引数の誤りは終了コード 2", () => {
 
 test("生成先でログ作成とタスク管理の初期操作ができる", () => {
   raprid(work, "init", "--no-git");
-  const log = sh(work, process.execPath, "logs/create_log.ts", "claude", "--session", "first");
+  const log = raprid(work, "log", "create", "claude", "--session", "first");
   assert.equal(log.status, 0, log.stderr);
   assert.match(log.stdout, /logs\/\d{4}\/\d{2}\/\d{2}\/claude\/first/);
 
-  sh(work, "cp", "-R", "job/template", "job/sample");
-  const add = sh(work, "./job/add-task.sh", "sample", "first-task", "todo", "最初のタスク");
+  assert.equal(raprid(work, "job", "create", "sample").status, 0);
+  const add = raprid(work, "task", "add", "sample", "first-task", "todo", "最初のタスク");
   assert.equal(add.status, 0, add.stderr);
-  assert.ok(lstatSync(join(work, "job", "sample", "status", "todo", "first-task.md")).isSymbolicLink());
-  const move = sh(work, "./job/task-transition.sh", "sample", "T-001", "progress");
+  assert.ok(lstatSync(join(work, "jobs", "sample", "status", "todo", "first-task")).isSymbolicLink());
+  const move = raprid(work, "task", "move", "sample", "T-001", "progress");
   assert.equal(move.status, 0, move.stderr);
-  const list = sh(work, "./job/list-task.sh", "sample");
-  assert.match(list.stdout, /first-task|最初のタスク/);
+  const note = raprid(work, "task", "note", "sample", "T-001", "investigation");
+  assert.equal(note.status, 0, note.stderr);
+  const list = raprid(work, "task", "list", "sample");
+  assert.match(list.stdout, /progress \(1\)\n    T-001 +first-task +最初のタスク/);
 });

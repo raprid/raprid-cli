@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-プロジェクト管理リポジトリ。agent のセッションログ (`logs/`)、案件・タスク・Q&A (`job/`)、
+プロジェクト管理リポジトリ。agent のセッションログ (`logs/`)、案件・タスク・Q&A (`jobs/`)、
 ドキュメントと手動テストの手順書 (`docs/`)、関連リポジトリ (`repos/`) を管理する。
 
 Codex の入口は [AGENTS.md](AGENTS.md)。共通ルールは README.md とこのファイルで共有し、
@@ -10,29 +10,32 @@ Codex の入口は [AGENTS.md](AGENTS.md)。共通ルールは README.md とこ�
 ## 構成と運用ルール
 
 ディレクトリ構成・命名・タスクの状態遷移などのルールは [README.md](README.md) にまとめてある。
-**ファイルやディレクトリを追加・移動する前に必ず README.md を読み、記載された手順とスクリプトを使うこと。**
-テンプレート (`logs/template/`、`job/template/`) は複製元なので直接編集しない。
+**ファイルやディレクトリを追加・移動する前に必ず README.md を読み、記載された手順とサブコマンドを使うこと。**
+雛形 (`scripts/templates/`) は複製元なので直接編集しない。
+サブコマンドは `raprid <group> <command>`。CLI が無い環境では `pnpm raprid ...` か `node scripts/cli.ts ...` で同じ処理を呼べる。
 
 よく使う操作:
 
 | やること | 使うもの |
 | --- | --- |
-| agent のセッションログを作る | `pnpm log:create <agent名>` |
+| agent のセッションログを作る | `raprid log create <agent名>` (`pnpm log:create <agent名>` も同じ) |
 | 個別の作業記録を作る | セッション内の `_.md` を複製 ([logs/README.md](logs/README.md)) |
-| 案件を始める | `cp -R job/template job/<案件名>` |
-| タスクを作る | `/add-task` または `./job/add-task.sh` |
-| タスクの状態を変える | `/task-transition` または `./job/task-transition.sh` |
-| タスクの状況を見る | `/list-task` または `./job/list-task.sh <案件名>` |
+| 案件を始める | `raprid job create <案件名>` |
+| タスクを作る | `/add-task` または `raprid task add` |
+| タスクのフェーズ・調査の記録を作る | `raprid task note <案件名> <ID> <詳細名>` |
+| タスクの状態を変える | `/task-transition` または `raprid task move` |
+| タスクの状況を見る | `/list-task` または `raprid task list [<案件名>]` |
 | 動作確認をする | `/verify-task` (手順を対話で提示し、結果を選択肢から選ぶ) |
 | 手動テストを実行して GIF を撮る | `/run-manual-test` (Claude in Chrome で実行) |
 | テストの手順書を置く | `docs/feature/<領域>/<機能>/` ([docs/feature/README.md](docs/feature/README.md)) |
-| QA の状況を見る | `/list-qa` または `./job/list-qa.sh <案件名>` |
-| QA を作る | `./job/add-qa.sh` |
-| QA を解決にする | `./job/qa-transition.sh` |
+| QA の状況を見る | `/list-qa` または `raprid qa list [<案件名>]` |
+| QA を作る | `raprid qa add` |
+| QA を解決にする・再オープンする | `raprid qa resolve` / `raprid qa move <案件名> <ID> unresolved` |
 | ドキュメントを置く | `docs/{official,unofficial,personal}/<案件名>/` ([docs/README.md](docs/README.md)) |
 | リリース資料の変更箇所を作る | `/build-release-diff-sheet` (MR の差分を撮って貼る) |
 | リリース資料の確認手順を作る | `/build-release-check-sheet` (`docs/feature/` の手順書から起こす) |
-| submodule を追加する | `./repos/add_submodule.sh <URL> [--dir_name <名前>] <権限>` |
+| submodule を追加する | `raprid repo add <URL> [--dir-name <名前>] <権限>` |
+| 旧構成 (`job/`) から移行する | `raprid job migrate --dry-run` → `--apply` (README の「旧構成からの移行」) |
 | プロジェクト状態を更新する | `/reload-project` |
 
 submodule のローカル動作確認は `repos/<名前>/repo/`、作業ブランチは
@@ -48,7 +51,7 @@ submodule のローカル動作確認は `repos/<名前>/repo/`、作業ブラ�
 * `_` で始まるファイルは実行対象にせず、ディレクトリ共通の `Background:` を置く
 * 仕様が変わったら消さずに `docs/feature/archived/<同じ相対パス>` へ `git mv` する
 * タスクとの対応はタスク md の frontmatter `test:` に書く
-* 結果と GIF は `job/<案件名>/assets/<タスク名>/<実行日>/` に残し、タスク md から参照する
+* 結果と GIF は `jobs/<案件名>/tasks/<タスク名>/assets/<実行日>/` に残し、タスクの `index.md` から参照する
 
 実行は `/verify-task` (人が実機を見て結果を選ぶ) か
 `/run-manual-test` (Chrome で実行してシナリオごとに GIF を撮る)。
@@ -56,7 +59,7 @@ submodule のローカル動作確認は `repos/<名前>/repo/`、作業ブラ�
 
 ## タスクと QA の状態
 
-**状態の正は実体ファイルの frontmatter にある `status`。**
+**状態の正は実体 (`tasks/<タスク名>/index.md`、`qa/<QA名>/index.md`) の frontmatter にある `status`。**
 `todo/` `pending/` `progress/` `done/` (タスク) と `unresolved/` `resolved/` (QA) に置く
 シンボリックリンクは、`ls` で状況を見るための索引として扱う。
 **`pending` は「外部要因で着手できない」状態**で、`blockedBy` に待っている相手を必ず書く
@@ -67,7 +70,8 @@ submodule のローカル動作確認は `repos/<名前>/repo/`、作業ブラ�
 frontmatter は固定ID (`T-001` / `Q-001`)、日付 (`createdAt` / `updatedAt` / `completedAt` / `resolvedAt`)、
 依存関係 (`blockedBy`)、QA なら関連案件 (`job`) と確認先 (`askTo`) を持つ。
 項目の意味と書き方は [README.md](README.md) に従う。
-QA は `job/<案件名>/qa/` に置き、特定案件に属さないものは `job/other/qa/` に置く。
+QA は `jobs/<案件名>/qa/` に置き、特定案件に属さないものは `jobs/other/qa/` に置く。
+タスクの `index.md` は要約とし、フェーズや調査ごとの計画・実施内容・判断は同じディレクトリの詳細 md に書く。
 
 ## agent の作業記録
 
