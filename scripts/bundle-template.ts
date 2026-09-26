@@ -1,6 +1,9 @@
-// template/ を dist/template.json にまとめる。npm run build から呼ぶ。
+// template/ と template-links.json を dist/template.json にまとめる。npm run build から呼ぶ。
+//
+// GitHub からのインストールでは npm が tarball の展開時にシンボリックリンクを落とすため、
+// リンクは template/ に置かず template-links.json に記録している。
 
-import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TemplateBundle, TemplateEntry, TemplateSource } from "../src/bundle.js";
@@ -16,12 +19,7 @@ function walk(dir: string): TemplateEntry[] {
     const path = relative(templateDir, full).split("\\").join("/");
     const stat = lstatSync(full);
     if (stat.isSymbolicLink()) {
-      const target = readlinkSync(full);
-      const resolved = relative(templateDir, resolve(dirname(full), target));
-      if (isAbsolute(target) || resolved.startsWith("..") || isAbsolute(resolved)) {
-        throw new Error(`template/ の外を指すリンクは同梱できません: ${path} -> ${target}`);
-      }
-      entries.push({ type: "symlink", path, target });
+      throw new Error(`template/ にシンボリックリンクは置けません (template-links.json に書く): ${path}`);
     } else if (stat.isDirectory()) {
       entries.push(...walk(full));
     } else if (stat.isFile()) {
@@ -35,8 +33,20 @@ function walk(dir: string): TemplateEntry[] {
   return entries;
 }
 
+function links(): TemplateEntry[] {
+  const map = JSON.parse(readFileSync(join(repoRoot, "template-links.json"), "utf8")) as Record<string, string>;
+  return Object.entries(map).map(([path, target]) => {
+    const resolved = relative(templateDir, resolve(templateDir, dirname(path), target));
+    if (isAbsolute(target) || resolved.startsWith("..") || isAbsolute(resolved)) {
+      throw new Error(`template/ の外を指すリンクは同梱できません: ${path} -> ${target}`);
+    }
+    return { type: "symlink", path, target };
+  });
+}
+
 const source = JSON.parse(readFileSync(join(repoRoot, "template-source.json"), "utf8")) as TemplateSource;
-const bundle: TemplateBundle = { format: 1, source, entries: walk(templateDir) };
+const entries = [...walk(templateDir), ...links()].sort((a, b) => (a.path < b.path ? -1 : 1));
+const bundle: TemplateBundle = { format: 1, source, entries };
 
 rmSync(distDir, { recursive: true, force: true });
 mkdirSync(distDir);

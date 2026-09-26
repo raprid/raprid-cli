@@ -4,9 +4,10 @@
 //
 // Git 管理下のファイルだけを git archive で取り出し、生成対象外のものを除き、
 // overrides/ の初期ファイルで上書きしてから template/ を置き換える。
+// シンボリックリンクは template-links.json に移す (npm が GitHub の tarball 展開時に落とすため)。
 
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -86,13 +87,24 @@ try {
   }
   for (const path of overrides) cpSync(join(overridesDir, path), join(extractDir, path));
 
+  const links: Record<string, string> = {};
+  for (const path of files(extractDir)) {
+    const full = join(extractDir, path);
+    if (lstatSync(full).isSymbolicLink()) {
+      links[path] = readlinkSync(full);
+      rmSync(full);
+    }
+  }
+  removeEmptyDirs(extractDir);
+
   rmSync(templateDir, { recursive: true, force: true });
-  cpSync(extractDir, templateDir, { recursive: true, verbatimSymlinks: true });
+  cpSync(extractDir, templateDir, { recursive: true });
+  writeFileSync(join(repoRoot, "template-links.json"), `${JSON.stringify(links, null, 2)}\n`);
 
   const source: TemplateSource = { repository, ref: refName, commit };
   writeFileSync(join(repoRoot, "template-source.json"), `${JSON.stringify(source, null, 2)}\n`);
 
-  console.log(`template/ を ${commit.slice(0, 7)} (${refName}) から作り直しました: ${files(templateDir).length} 件`);
+  console.log(`template/ を ${commit.slice(0, 7)} (${refName}) から作り直しました: ${files(templateDir).length} 件 + リンク ${Object.keys(links).length} 件`);
   console.log(`除外: ${removed.length} 件`);
   for (const path of removed) console.log(`  - ${path}`);
   console.log(`上書き: ${overrides.length} 件`);
