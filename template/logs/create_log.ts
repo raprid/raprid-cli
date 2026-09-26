@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -57,37 +58,74 @@ function findSession(agentName: string, sessionId: string): string[] {
 }
 
 const lockTimeoutMs = 10_000;
-const staleLockMs = 30_000;
 
 function sleep(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-// 同じセッションの探索から作成までを排他し、日付の異なる同時実行でも重複を作らない。
-// 異常終了で残ったロックは staleLockMs を過ぎたら無効とみなす。
-function withSessionLock(agentName: string, sessionId: string, fn: () => void): void {
-  const lockDir = join(logsRoot, ".locks", agentName, sessionId);
-  mkdirSync(dirname(lockDir), { recursive: true });
-  const deadline = Date.now() + lockTimeoutMs;
-  for (;;) {
-    try {
-      mkdirSync(lockDir);
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      try {
-        if (Date.now() - lstatSync(lockDir).mtimeMs > staleLockMs) rmSync(lockDir, { recursive: true, force: true });
-      } catch {
-        // 他のプロセスが解放した直後なら次の試行で取れる
-      }
-      if (Date.now() > deadline) throw new Error(`セッションのロックを取得できません: ${lockDir}`);
-      sleep(20);
-    }
+// 削除対象は確認済みの所有者ファイルだけ。別の所有者が配置した非空ディレクトリは消せない。
+function removeOwner(lockDir: string, owner: string): void {
+  try {
+    unlinkSync(join(lockDir, owner));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   try {
+    rmdirSync(lockDir);
+  } catch (error) {
+    if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+  }
+}
+
+function recoverDeadOwner(lockDir: string): void {
+  let owners: string[];
+  try {
+    owners = readdirSync(lockDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  for (const owner of owners) {
+    const match = /^([1-9]\d*)-[0-9a-f-]{36}$/.exec(owner);
+    if (!match) continue;
+    try {
+      // 同じマシンの PID だけを判定し、不明な所有者は回収しない。
+      if (readFileSync(join(lockDir, owner), "utf8") !== hostname()) continue;
+      process.kill(Number(match[1]), 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") removeOwner(lockDir, owner);
+      else if ((error as NodeJS.ErrnoException).code !== "ENOENT" && (error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+    }
+  }
+}
+
+// 所有者情報を準備してから原子的に公開する。生存中の所有者は時間に関係なく待つ。
+function withSessionLock(agentName: string, sessionId: string, fn: () => void): void {
+  const lockDir = join(logsRoot, ".locks", agentName, sessionId);
+  const owner = `${process.pid}-${randomUUID()}`;
+  const prepared = join(logsRoot, ".tmp", `lock-${owner}`);
+  mkdirSync(dirname(lockDir), { recursive: true });
+  mkdirSync(prepared, { recursive: true });
+  let acquired = false;
+  try {
+    writeFileSync(join(prepared, owner), hostname(), { flag: "wx" });
+    const deadline = performance.now() + lockTimeoutMs;
+    for (;;) {
+      try {
+        renameSync(prepared, lockDir);
+        acquired = true;
+        break;
+      } catch (error) {
+        if (!["EEXIST", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+        recoverDeadOwner(lockDir);
+        if (performance.now() > deadline) throw new Error(`セッションのロックを取得できません: ${lockDir}`);
+        sleep(20);
+      }
+    }
     fn();
   } finally {
-    rmSync(lockDir, { recursive: true, force: true });
+    if (acquired) removeOwner(lockDir, owner);
+    rmSync(prepared, { recursive: true, force: true });
   }
 }
 
@@ -177,6 +215,10 @@ if (parsed?.values.help) {
   };
 
   // 自動採番の UUID は他と衝突しないので、ID を指定したときだけ排他する
-  if (sessionArg === undefined) createOrReuse();
-  else withSessionLock(agentName, sessionId, createOrReuse);
+  try {
+    if (sessionArg === undefined) createOrReuse();
+    else withSessionLock(agentName, sessionId, createOrReuse);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
 }

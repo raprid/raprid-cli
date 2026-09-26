@@ -25,6 +25,11 @@ function version(): string {
   return pkg.version;
 }
 
+// POSIX シェルで変数展開・コマンド置換を防ぎ、単一引用符自体もリテラルにする。
+function shellQuote(value: string): string {
+  return "'" + value.replaceAll("'", "'\"'\"'") + "'";
+}
+
 function parse(argv: string[]) {
   try {
     return parseArgs({
@@ -61,7 +66,7 @@ function runInit(target: string, git: boolean, dryRun: boolean): number {
   console.log(gitMessage);
   console.log(`
 次の手順:
-  cd ${JSON.stringify(shown)}
+  cd ${shellQuote(shown.startsWith("-") ? `./${shown}` : shown)}
   pnpm install                 # 型チェック・テスト用の依存 (Node.js 24 以上)
   pnpm log:create claude       # agent のセッションログを作る
   README.md と CLAUDE.md を読み、案件は cp -R job/template job/<案件名> で始める`);

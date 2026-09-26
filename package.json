@@ -1,6 +1,6 @@
 {
   "name": "raprid",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "プロジェクト管理リポジトリの初期状態を生成する CLI",
   "license": "MIT",

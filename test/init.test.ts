@@ -76,6 +76,24 @@ test("存在しない・空白を含むパスを指定して生成できる", ()
   assert.equal(existsSync(join(work, "README.md")), false);
 });
 
+test("表示した cd を実行しても特殊文字が展開されず生成先へ移動できる", () => {
+  for (const name of ["with space", "project-$RAPRID_REVIEW_LABEL", "project-$(touch substituted)", "project-`touch backtick`", "single'quote", "-leading"]) {
+    const result = raprid(work, "init", `./${name}`, "--no-git");
+    assert.equal(result.status, 0, result.stderr);
+    const command = result.stdout.match(/^  (cd .+)$/m)?.[1];
+    assert.ok(command, result.stdout);
+    const moved = spawnSync("sh", ["-c", `${command} && pwd -P`], {
+      cwd: work,
+      env: { ...process.env, RAPRID_REVIEW_LABEL: "expanded", CDPATH: "" },
+      encoding: "utf8",
+    });
+    assert.equal(moved.status, 0, moved.stderr);
+    assert.equal(moved.stdout.trim(), spawnSync("pwd", ["-P"], { cwd: join(work, name), encoding: "utf8" }).stdout.trim());
+    assert.equal(existsSync(join(work, "substituted")), false);
+    assert.equal(existsSync(join(work, "backtick")), false);
+  }
+});
+
 test("既存ファイルと衝突したら何も変更せずに失敗する", () => {
   writeFileSync(join(work, "README.md"), "既存\n");
   writeFileSync(join(work, "notes.txt"), "無関係\n");

@@ -21,7 +21,7 @@ raprid --version
 特定の版を入れる場合は、版ごとの tarball を指定する。
 
 ```sh
-npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.1.0/raprid-0.1.0.tgz
+npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.1.1/raprid-0.1.1.tgz
 ```
 
 `npm install -g github:raprid/raprid-cli` は使わない。git 依存のインストールでは npm が `-g` を
@@ -31,7 +31,7 @@ npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.1.0/rap
 ```sh
 pnpm install
 npm pack                          # prepack でビルドし raprid-<version>.tgz を作る (private のため npm publish はできない)
-npm install -g ./raprid-0.1.0.tgz
+npm install -g ./raprid-0.1.1.tgz
 ```
 
 ## 使い方
@@ -147,7 +147,7 @@ npm pack はシンボリックリンクや `.gitignore` をそのまま同梱で
 ```sh
 npm pack --dry-run                                    # 同梱一覧 (dist/ と package.json など)
 prefix="$(mktemp -d)"
-npm install -g --prefix "$prefix" ./raprid-0.1.0.tgz
+npm install -g --prefix "$prefix" ./raprid-0.1.1.tgz
 "$prefix/bin/raprid" init "$(mktemp -d)/sample"
 ```
 
@@ -159,8 +159,8 @@ npm install -g --prefix "$prefix" ./raprid-0.1.0.tgz
 ```sh
 pnpm test
 npm pack
-cp raprid-0.1.0.tgz raprid.tgz
-gh release create v0.1.0 raprid.tgz raprid-0.1.0.tgz --title v0.1.0 --notes "雛形: project_template <コミット>"
+cp raprid-0.1.1.tgz raprid.tgz
+gh release create v0.1.1 raprid.tgz raprid-0.1.1.tgz --title v0.1.1 --notes "雛形: project_template <コミット>"
 ```
 
 ## ライセンス
