@@ -116,6 +116,10 @@ export function listItems(job: Job, kind: Kind, describe: (item: Item) => string
   const pattern = kind === "task" ? /^T-\d{3,}$/ : /^Q-\d{3,}$/;
   const byId = new Map<string, string[]>();
   for (const item of items) {
+    if (!exists(item.index)) {
+      issues.push(`index.md が無い: ${job.display(item.dir)}`);
+      continue;
+    }
     const id = item.idOrEmpty();
     if (!pattern.test(id)) {
       issues.push(`IDが未設定または不正: ${item.name} (${id || "未設定"})`);

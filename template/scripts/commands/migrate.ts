@@ -19,6 +19,7 @@ import {
   readlinkSync,
   realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -29,6 +30,7 @@ import { CliError, UsageError } from "../lib/errors.ts";
 import { Frontmatter } from "../lib/frontmatter.ts";
 import { exists, isDirectory, isFile, lstatOrUndefined } from "../lib/fsutil.ts";
 import { qaStatuses, taskStatuses, validateJobName } from "../lib/jobs.ts";
+import { withLock } from "../lib/lock.ts";
 import { fencedLines, findSection, headings, splitLines } from "../lib/markdown.ts";
 import { projectRoot, scriptsDir, scriptsInfo, templatesDir } from "../lib/root.ts";
 
@@ -77,11 +79,9 @@ interface Plan {
 interface Journal {
   id: string;
   state: "started" | "completed" | "rolled-back" | "restored";
-  jobsCreated: boolean;
-  scriptsCreated: boolean;
-  jobMoved: boolean;
-  rewritten: { path: string; created: boolean }[];
-  after: Record<string, string>;
+  // この移行で置いた jobs/・scripts/ の内容と、書き換えたファイルの前後のハッシュ
+  staged: { jobs: Record<string, string>; scripts: Record<string, string> | null };
+  rewrites: { path: string; staged: string; original?: string }[];
 }
 
 function sha256(data: Buffer | string): string {
@@ -202,13 +202,15 @@ export function splitTask(text: string, label: string): Split {
     phases.forEach((phase, index) => {
       const end = index + 1 < phases.length ? phases[index + 1].line : inner.length;
       const body = trimBlank(inner.slice(phase.line + 1, end));
-      const meaningful = body.some((line) => line.trim() !== "" && !/^#{1,6}(\s|$)/.test(line));
-      if (!meaningful) {
+      // 雛形の骨組み (計画・実施内容・判断・結果の見出しだけ) のフェーズだけを省く
+      const skeleton = body.every((line) => line.trim() === "" || /^#{1,6}\s+(計画|実施内容|判断|結果)\s*$/.test(line));
+      if (skeleton) {
         notes.push(`空のフェーズを省略: ${label} (${phase.text})`);
         return;
       }
       const number = details.length + 1;
-      let slug = asciiSlug(phase.text);
+      // 日本語などを含む見出しは英字の一部だけを拾うと意味が崩れるため、連番の phaseN にする
+      let slug = /^[\x20-\x7e]+$/.test(phase.text) ? asciiSlug(phase.text) : "";
       if (!/[a-z]/.test(slug)) slug = `phase${number}`;
       if (used.has(slug)) slug = `${slug}-${number}`;
       used.add(slug);
@@ -223,10 +225,12 @@ export function splitTask(text: string, label: string): Split {
   return { index, details, notes };
 }
 
-const linkPattern = /(\]\()(<[^>\n]*>|[^)\s]+)((?:\s+"[^"\n]*")?\))/g;
-const referencePattern = /^(\s{0,3}\[[^\]\n]+\]:\s*)(<[^>\n]*>|\S+)(.*)$/;
+const linkPattern = /(\]\()(<[^>\n]*>|[^)\s]+)((?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\))/g;
+// 脚注の定義 ([^1]: ...) は参照定義ではない
+const referencePattern = /^(\s{0,3}\[(?!\^)[^\]\n]+\]:\s*)(<[^>\n]*>|\S+)(.*)$/;
 
 interface LinkContext {
+  root: string;
   map: PathMap;
   oldLocation: string; // このファイルの移行前の場所 (root からの相対)
   newLocation: string;
@@ -254,6 +258,8 @@ function rewriteTarget(raw: string, context: LinkContext): string {
   }
   const oldTarget = posix.normalize(posix.join(posix.dirname(context.oldLocation), decoded));
   if (oldTarget.startsWith("../") || oldTarget === "..") return raw;
+  // 旧ツリーに実在しない相対パス (プレースホルダや語、元から切れたリンク) は推測で書き換えない
+  if (!exists(join(context.root, oldTarget))) return raw;
   const mapped = context.map.map(oldTarget.replace(/\/$/, ""));
   if (mapped && "dropped" in mapped) {
     context.warnings.push(`移行しない旧ファイルへのリンク: ${context.newLocation} -> ${target}`);
@@ -395,6 +401,13 @@ export function buildPlan(root: string, sourceScripts = scriptsDir): Plan {
     };
     collect("task", `${base}/list`);
     collect("qa", `${base}/qa/list`);
+    // 新構成で QA 名やタスクの置き場と衝突するものは推測で移さない
+    if (isDirectory(join(root, base, "qa"))) {
+      for (const name of readdirSync(join(root, base, "qa"))) {
+        if (name !== "list" && name !== "status" && !ignorable.has(name)) errors.push(`分類できないファイル: ${base}/qa/${name}`);
+      }
+    }
+    if (exists(join(root, base, "tasks"))) errors.push(`新構成の tasks/ と衝突する: ${base}/tasks`);
 
     // 固定 ID・状態・frontmatter を検証する
     const validate = (kind: "task" | "qa", names: Set<string>, listRel: string) => {
@@ -551,13 +564,22 @@ export function buildPlan(root: string, sourceScripts = scriptsDir): Plan {
   const count = { value: 0 };
   for (const item of deferred) {
     const before = count.value;
-    const content = rewriteLinks(item.content, { map, oldLocation: item.from, newLocation: item.to, splitTargets, warnings, count });
+    const content = rewriteLinks(item.content, { root, map, oldLocation: item.from, newLocation: item.to, splitTargets, warnings, count });
     if (count.value > before) counts.linkFiles++;
     if (!item.split) {
+      if (/\b(?:src|href)=["'](?![a-z][a-z0-9+.-]*:|#|\/)/i.test(content) && item.from !== item.to) {
+        pending.push(`HTML の src/href は書き換えない (移動先から見直す): ${item.to}`);
+      }
       ops.push({ kind: "file", to: item.to, content: Buffer.from(content), mode: item.mode });
       continue;
     }
+    if (/\b(?:src|href)=["'](?![a-z][a-z0-9+.-]*:|#|\/)/i.test(content)) {
+      pending.push(`HTML の src/href は書き換えない (移動先から見直す): ${item.to}`);
+    }
     const split = splitTask(content, item.from);
+    if (split.details.length > 0 && /\]\(#/.test(content)) {
+      pending.push(`同じファイル内のアンカー (#...) は分割後に別ファイルへ移ることがある: ${item.to}`);
+    }
     warnings.push(...split.notes.filter((note) => note.startsWith("手動確認")));
     pending.push(...split.notes.filter((note) => !note.startsWith("手動確認")));
     ops.push({ kind: "file", to: item.to, content: Buffer.from(split.index), mode: item.mode });
@@ -573,7 +595,7 @@ export function buildPlan(root: string, sourceScripts = scriptsDir): Plan {
   for (const rel of markdownFiles(root)) {
     const text = readFileSync(join(root, rel), "utf8");
     const before = count.value;
-    const content = rewriteLinks(text, { map, oldLocation: rel, newLocation: rel, splitTargets, warnings, count });
+    const content = rewriteLinks(text, { root, map, oldLocation: rel, newLocation: rel, splitTargets, warnings, count });
     if (content !== text) {
       sources[rel] = sha256(text);
       rewrites.push({ path: rel, content, mode: fileMode(join(root, rel)), created: false });
@@ -622,7 +644,9 @@ export function buildPlan(root: string, sourceScripts = scriptsDir): Plan {
     if (current === undefined) {
       pkg.scripts = { ...(pkg.scripts ?? {}), raprid: command };
       sources["package.json"] = sha256(text);
-      rewrites.push({ path: "package.json", content: `${JSON.stringify(pkg, null, 2)}\n`, mode: fileMode(pkgPath), created: false });
+      const indent = /^[{\[][ \t]*\r?\n([ \t]+)/.exec(text)?.[1] ?? "  ";
+      const eol = text.includes("\r\n") ? "\r\n" : "\n";
+      rewrites.push({ path: "package.json", content: `${JSON.stringify(pkg, null, indent).replaceAll("\n", eol)}${eol}`, mode: fileMode(pkgPath), created: false });
     }
   } else if (exists(pkgPath)) {
     throw new CliError("package.json がファイルではないため中止しました");
@@ -634,11 +658,12 @@ export function buildPlan(root: string, sourceScripts = scriptsDir): Plan {
   // .gitignore: 旧 job/ の除外を jobs/ に読み替え、ロックと退避先を除外する
   const ignorePath = join(root, ".gitignore");
   const ignoreText = isFile(ignorePath) ? readFileSync(ignorePath, "utf8") : "";
-  const ignoreLines = ignoreText === "" ? [] : ignoreText.replace(/\n$/, "").split("\n");
+  const ignoreEol = ignoreText.includes("\r\n") ? "\r\n" : "\n";
+  const ignoreLines = ignoreText === "" ? [] : ignoreText.replace(/\r?\n$/, "").split(/\r?\n/);
   const updatedIgnore = ignoreLines.map((line) => line.replace(/^(!?\/?)job\//, "$1jobs/"));
   const additions = ["jobs/.locks/", ".raprid-migrate/"].filter((line) => !updatedIgnore.includes(line));
   if (additions.length > 0) updatedIgnore.push(...(updatedIgnore.length > 0 ? [""] : []), "# raprid (案件操作のロックと移行時の退避先)", ...additions);
-  const newIgnore = `${updatedIgnore.join("\n")}\n`;
+  const newIgnore = `${updatedIgnore.join(ignoreEol)}${ignoreEol}`;
   if (newIgnore !== ignoreText) {
     if (ignoreText !== "") sources[".gitignore"] = sha256(ignoreText);
     rewrites.push({ path: ".gitignore", content: newIgnore, mode: ignoreText !== "" ? fileMode(ignorePath) : 0o644, created: ignoreText === "" && !exists(ignorePath) });
@@ -748,42 +773,70 @@ function currentSources(root: string, plan: Plan): string[] {
   return changed;
 }
 
-function rollback(root: string, journal: Journal): string[] {
-  const failures: string[] = [];
+// 戻す前に、各対象がこの移行で置いたままの内容かを確かめる。
+// 移行後に手で変更されたもの・移行前から別の内容のものは消さず、中止の理由として返す。
+interface RollbackAction {
+  label: string;
+  run: () => void;
+}
+
+function sameTree(actual: Record<string, string>, expected: Record<string, string>): boolean {
+  const keys = new Set([...Object.keys(actual), ...Object.keys(expected)]);
+  return [...keys].every((key) => actual[key] === expected[key]);
+}
+
+function planRollback(root: string, journal: Journal): { actions: RollbackAction[]; blockers: string[] } {
   const dir = workDir(root, journal.id);
-  const attempt = (label: string, fn: () => void) => {
-    try {
-      fn();
-    } catch (error) {
-      failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-  // 各フラグは操作の直前に記録している。実際に操作が済んでいるかは存在で確かめる
-  if (journal.jobMoved) {
-    if (exists(join(dir, "backup", "job")) && !exists(join(root, "job"))) {
-      attempt("job/ を戻す", () => renameSync(join(dir, "backup", "job"), join(root, "job")));
-    }
-    if (failures.length === 0) journal.jobMoved = false;
+  const actions: RollbackAction[] = [];
+  const blockers: string[] = [];
+  const backupJob = join(dir, "backup", "job");
+  if (exists(backupJob)) {
+    if (exists(join(root, "job"))) blockers.push("job/ と退避した job/ が両方あります");
+    else actions.push({ label: "job/ を戻す", run: () => renameSync(backupJob, join(root, "job")) });
   }
-  for (const rewrite of [...journal.rewritten].reverse()) {
-    attempt(`${rewrite.path} を戻す`, () => {
-      if (rewrite.created) rmSync(join(root, rewrite.path), { force: true });
-      else {
-        const temp = join(root, `${rewrite.path}.raprid-restore`);
-        cpSync(join(dir, "backup", rewrite.path), temp, { preserveTimestamps: true });
-        renameSync(temp, join(root, rewrite.path));
-      }
+  for (const rewrite of [...journal.rewrites].reverse()) {
+    const path = join(root, rewrite.path);
+    const current = isFile(path) ? sha256(readFileSync(path)) : undefined;
+    if (current === rewrite.original) continue; // まだ書き換えていない
+    if (current !== rewrite.staged) {
+      blockers.push(`移行後に変更されたファイル: ${rewrite.path}`);
+      continue;
+    }
+    actions.push({
+      label: `${rewrite.path} を戻す`,
+      run: () => {
+        if (rewrite.original === undefined) rmSync(path, { force: true });
+        else {
+          const temp = join(root, `${rewrite.path}.raprid-restore`);
+          cpSync(join(dir, "backup", rewrite.path), temp, { preserveTimestamps: true });
+          renameSync(temp, path);
+        }
+      },
     });
   }
-  if (failures.length === 0) journal.rewritten = [];
-  if (journal.scriptsCreated) {
-    // 計画時に scripts/ が無かった場合だけ立つフラグなので、残っているものはこの移行で作ったもの
-    attempt("scripts/ を削除する", () => rmSync(join(root, "scripts"), { recursive: true, force: true }));
-    if (failures.length === 0) journal.scriptsCreated = false;
+  for (const [name, expected] of [["scripts", journal.staged.scripts], ["jobs", journal.staged.jobs]] as const) {
+    if (!expected || !exists(join(root, name))) continue;
+    // 計画時には無かったディレクトリ。この移行で置いた内容と一致するときだけ削除する
+    const changed = Object.keys({ ...hashTree(root, name), ...expected }).filter((key) => hashTree(root, name)[key] !== expected[key]);
+    if (!sameTree(hashTree(root, name), expected)) {
+      blockers.push(...changed.slice(0, 20).map((key) => `移行後に変更されたファイル: ${key}`));
+      continue;
+    }
+    actions.push({ label: `${name}/ を削除する`, run: () => rmSync(join(root, name), { recursive: true, force: true }) });
   }
-  if (journal.jobsCreated) {
-    attempt("jobs/ を削除する", () => rmSync(join(root, "jobs"), { recursive: true, force: true }));
-    if (failures.length === 0) journal.jobsCreated = false;
+  return { actions, blockers };
+}
+
+function rollback(root: string, journal: Journal): string[] {
+  const { actions, blockers } = planRollback(root, journal);
+  if (blockers.length > 0) return blockers;
+  const failures: string[] = [];
+  for (const action of actions) {
+    try {
+      action.run();
+    } catch (error) {
+      failures.push(`${action.label}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   return failures;
 }
@@ -803,8 +856,6 @@ function apply(plan: Plan, expected: string | undefined): void {
   const dir = workDir(root, id);
   mkdirSync(join(dir, "backup"), { recursive: true });
   writeFileSync(join(dir, "plan.txt"), [`hash: ${plan.hash}`, ...plan.mappings, ...plan.warnings.map((warning) => `注意: ${warning}`)].join("\n") + "\n");
-  const journal: Journal = { id, state: "started", jobsCreated: false, scriptsCreated: false, jobMoved: false, rewritten: [], after: {} };
-  saveJournal(root, journal);
 
   // 退避と準備はすべて一時領域で行い、ここまでで失敗しても作業ツリーは変わらない
   const stageDir = join(dir, "stage");
@@ -829,39 +880,43 @@ function apply(plan: Plan, expected: string | undefined): void {
     throw new CliError(["計画の作成後に変更されたファイルがあるため、何も変更せずに中止しました:", ...changed.map((rel) => `  ${rel}`)].join("\n"));
   }
 
+  // 置く前に内容のハッシュを記録し、戻すときはこれと一致するものだけを戻す
+  const journal: Journal = {
+    id,
+    state: "started",
+    staged: { jobs: hashTree(stageDir, "jobs"), scripts: plan.installScripts ? hashTree(stageDir, "scripts") : null },
+    rewrites: plan.rewrites.map((rewrite) => ({
+      path: rewrite.path,
+      staged: sha256(rewrite.content),
+      original: rewrite.created ? undefined : sha256(readFileSync(join(root, rewrite.path))),
+    })),
+  };
+  saveJournal(root, journal);
+
   try {
-    journal.jobsCreated = true;
-    saveJournal(root, journal);
     renameSync(join(stageDir, "jobs"), join(root, "jobs"));
-    if (plan.installScripts) {
-      journal.scriptsCreated = true;
-      saveJournal(root, journal);
-      renameSync(join(stageDir, "scripts"), join(root, "scripts"));
-    }
+    if (plan.installScripts) renameSync(join(stageDir, "scripts"), join(root, "scripts"));
     for (const rewrite of plan.rewrites) {
       if (rewrite.created && exists(join(root, rewrite.path))) throw new Error(`作成するファイルが既にあります: ${rewrite.path}`);
-      journal.rewritten.push({ path: rewrite.path, created: rewrite.created });
-      saveJournal(root, journal);
       renameSync(join(stageDir, "files", rewrite.path), join(root, rewrite.path));
     }
-    journal.jobMoved = true;
-    saveJournal(root, journal);
     renameSync(join(root, "job"), join(dir, "backup", "job"));
+    journal.state = "completed";
+    saveJournal(root, journal);
   } catch (error) {
     const failures = rollback(root, journal);
     journal.state = failures.length === 0 ? "rolled-back" : "started";
-    saveJournal(root, journal);
+    try {
+      saveJournal(root, journal);
+    } catch {
+      // 記録できなくても、作業ツリーの復元結果を優先して報告する
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (failures.length > 0) {
       throw new CliError([`移行に失敗し、一部を戻せませんでした: ${message}`, ...failures.map((failure) => `  ${failure}`), `raprid job migrate --restore ${id} で再度戻せます`].join("\n"));
     }
     throw new CliError(`移行に失敗したため、この実行で変えたものを戻しました: ${message}`);
   }
-
-  journal.after = { ...hashTree(root, "jobs"), ...(plan.installScripts ? hashTree(root, "scripts") : {}) };
-  for (const rewrite of plan.rewrites) journal.after[rewrite.path] = sha256(readFileSync(join(root, rewrite.path)));
-  journal.state = "completed";
-  saveJournal(root, journal);
   rmSync(stageDir, { recursive: true, force: true });
   console.log(`移行しました (移行ID: ${id})`);
   console.log(`  移行前の job/ と更新前のファイル: .raprid-migrate/${id}/backup/`);
@@ -879,20 +934,33 @@ function restore(root: string, id: string): void {
     console.log(`移行 ${id} は既に戻されています。変更はありません。`);
     return;
   }
-  if (journal.state === "completed") {
-    const now = { ...hashTree(root, "jobs"), ...(journal.scriptsCreated ? hashTree(root, "scripts") : {}) };
-    for (const rewrite of journal.rewritten) if (isFile(join(root, rewrite.path))) now[rewrite.path] = sha256(readFileSync(join(root, rewrite.path)));
-    const changed = [...new Set([...Object.keys(now), ...Object.keys(journal.after)])].filter((rel) => now[rel] !== journal.after[rel]);
-    if (changed.length > 0) {
-      throw new CliError(["移行後に変更されたファイルがあるため、戻さずに中止しました (退避は残っています):", ...changed.map((rel) => `  ${rel}`)].join("\n"));
-    }
-    if (exists(join(root, "job"))) throw new CliError("job/ が既にあるため、戻さずに中止しました");
+  const { blockers } = planRollback(root, journal);
+  if (blockers.length > 0) {
+    throw new CliError(["移行後に変更されたファイルがあるため、戻さずに中止しました (退避は残っています):", ...blockers.map((blocker) => `  ${blocker}`)].join("\n"));
   }
   const failures = rollback(root, journal);
-  journal.state = failures.length === 0 ? "restored" : journal.state;
+  if (failures.length === 0) journal.state = "restored";
   saveJournal(root, journal);
   if (failures.length > 0) throw new CliError(["一部を戻せませんでした:", ...failures.map((failure) => `  ${failure}`)].join("\n"));
   console.log(`移行 ${id} の前の状態に戻しました。退避の記録は .raprid-migrate/${id}/ に残っています。`);
+}
+
+// apply と restore は同じ管理リポジトリで同時に動かさない
+function withMigrationLock<T>(root: string, fn: () => T): T {
+  const base = join(root, ".raprid-migrate");
+  const created = !exists(base);
+  try {
+    return withLock(join(base, ".lock"), base, fn);
+  } finally {
+    // 何も残さなかった場合は、作ったディレクトリも片付ける
+    if (created) {
+      try {
+        rmdirSync(base);
+      } catch {
+        // 移行の記録が残っている
+      }
+    }
+  }
 }
 
 export function migrate(argv: string[]): void {
@@ -906,28 +974,33 @@ export function migrate(argv: string[]): void {
   if (modes > 1) throw new UsageError(`--dry-run・--apply・--restore は同時に指定できません\n${usage}`);
   if (values.plan !== undefined && !values.apply) throw new UsageError("--plan は --apply と一緒に指定してください");
   const root = projectRoot();
-  if (values.restore !== undefined) {
-    restore(root, values.restore);
+  const restoreId = values.restore;
+  if (restoreId !== undefined) {
+    withMigrationLock(root, () => restore(root, restoreId));
     return;
   }
-  const hasOld = isDirectory(join(root, "job"));
-  const hasNew = exists(join(root, "jobs"));
-  if (!hasOld && hasNew) {
-    console.log("移行済みです (jobs/ があり、job/ はありません)。変更はありません。");
-    return;
-  }
-  if (!hasOld) throw new CliError(`旧構成の job/ が見つかりません: ${root}`);
-  if (hasNew) {
-    throw new CliError(
-      "job/ と jobs/ が両方あるため中止しました。途中まで移行した状態か、手で作った jobs/ があります。\n" +
-        "  .raprid-migrate/ に記録があれば raprid job migrate --restore <移行ID> で戻し、無ければ jobs/ を確認して整理してください",
-    );
-  }
-  const plan = buildPlan(root);
-  if (values.apply) {
-    apply(plan, values.plan);
-  } else {
-    printPlan(plan);
-    console.log(`実行: raprid job migrate --apply --plan ${plan.hash}  (何も変更していません)`);
-  }
+  const run = () => {
+    const hasOld = isDirectory(join(root, "job"));
+    const hasNew = exists(join(root, "jobs"));
+    if (!hasOld && hasNew) {
+      console.log("移行済みです (jobs/ があり、job/ はありません)。変更はありません。");
+      return;
+    }
+    if (!hasOld) throw new CliError(`旧構成の job/ が見つかりません: ${root}`);
+    if (hasNew) {
+      throw new CliError(
+        "job/ と jobs/ が両方あるため中止しました。途中まで移行した状態か、手で作った jobs/ があります。\n" +
+          "  .raprid-migrate/ に記録があれば raprid job migrate --restore <移行ID> で戻し、無ければ jobs/ を確認して整理してください",
+      );
+    }
+    const plan = buildPlan(root);
+    if (values.apply) {
+      apply(plan, values.plan);
+    } else {
+      printPlan(plan);
+      console.log(`実行: raprid job migrate --apply --plan ${plan.hash}  (何も変更していません)`);
+    }
+  };
+  if (values.apply) withMigrationLock(root, run);
+  else run();
 }

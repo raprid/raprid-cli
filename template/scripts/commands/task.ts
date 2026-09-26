@@ -2,7 +2,7 @@ import { readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, singleLine } from "../lib/args.ts";
 import { CliError, UsageError } from "../lib/errors.ts";
-import { Frontmatter } from "../lib/frontmatter.ts";
+import { Frontmatter, yamlScalar } from "../lib/frontmatter.ts";
 import { localDate, writeFileAtomic } from "../lib/fsutil.ts";
 import { assertNameFree, assertStatusDirs, createItem, listItems, moveItem, sectionSummary } from "../lib/items.ts";
 import { Job, validateItemName } from "../lib/jobs.ts";
@@ -95,7 +95,7 @@ function move(argv: string[]): void {
     fm.set("status", status);
     fm.set("updatedAt", today);
     fm.set("completedAt", status === "done" ? today : "");
-    fm.set("blockedBy", blockedBy ? [blockedBy] : []);
+    fm.set("blockedBy", blockedBy ? [yamlScalar(blockedBy)] : []);
     const link = moveItem(item, status, fm.toString());
     console.log(`変更: ${fm.get("id")} / ${item.name} / ${old} -> ${status}`);
     console.log(`実体: ${job.display(item.index)}`);
@@ -123,7 +123,8 @@ function note(argv: string[]): void {
     const text = item.read();
     const fm = Frontmatter.parse(text, job.display(item.index));
     if (fm.has("updatedAt")) fm.set("updatedAt", localDate());
-    const linked = appendToSection(fm.toString(), 2, "詳細", [`* [${title}](${file})`]);
+    const label = title.replace(/[\\[\]]/g, "\\$&");
+    const linked = appendToSection(fm.toString(), 2, "詳細", [`* [${label}](${file})`]);
     // 詳細の節が複数あると追加先が曖昧になる
     if (headings(splitLines(text)).filter((heading) => heading.level === 2 && heading.text === "詳細").length > 1) {
       throw new CliError(`「## 詳細」が複数あります: ${job.display(item.index)}`);

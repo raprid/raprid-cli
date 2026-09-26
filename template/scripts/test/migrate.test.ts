@@ -342,3 +342,79 @@ test("新構成の scripts/ を持つプロジェクトではローカルの移�
   assert.equal(result.status, 0, result.stderr);
   assert.ok(existsSync(join(root, "jobs/PROJ-1/tasks/api-setup/index.md")));
 });
+
+test("同時に 2 回実行しても片方だけが移行し、job/ と jobs/ を失わない", async () => {
+  const { spawn } = await import("node:child_process");
+  const cli = join(scriptsDir, "cli.ts");
+  const runs = Array.from({ length: 3 }, () =>
+    new Promise<{ status: number | null; stdout: string }>((resolvePromise) => {
+      const child = spawn(process.execPath, [cli, "job", "migrate", "--apply"], { env: { ...process.env, RAPRID_ROOT: root } });
+      let stdout = "";
+      child.stdout.on("data", (data) => (stdout += data));
+      child.on("close", (status) => resolvePromise({ status, stdout }));
+    }),
+  );
+  const results = await Promise.all(runs);
+  for (const result of results) assert.equal(result.status, 0, result.stdout);
+  assert.equal(results.filter((result) => result.stdout.includes("移行しました")).length, 1);
+  assert.ok(existsSync(join(root, "jobs/PROJ-1/tasks/api-setup/index.md")));
+  assert.equal(existsSync(join(root, "job")), false);
+  assert.equal(existsSync(join(root, ".raprid-migrate/.lock")), false);
+});
+
+test("記録が途中 (started) のままでも、移行後の変更があれば復元しない", () => {
+  const applied = migrate("--apply");
+  const id = /移行ID: ([0-9a-f-]+)/.exec(applied.stdout)![1];
+  const journalPath = join(root, ".raprid-migrate", id, "journal.json");
+  writeFileSync(journalPath, read(root, `.raprid-migrate/${id}/journal.json`).replace('"completed"', '"started"'));
+  const added = raprid(root, ["task", "add", "PROJ-1", "later", "todo", "移行後の追加"], { script: join(root, "scripts", "cli.ts") });
+  assert.equal(added.status, 0, added.stderr);
+  const before = snapshot(root);
+  const result = migrate("--restore", id);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /移行後に変更されたファイル: jobs\/PROJ-1\/tasks\/later\/index\.md/);
+  assert.deepEqual(snapshot(root), before);
+});
+
+test("脚注・実在しないパス・見出しだけのフェーズ・HTML の参照を壊さない", () => {
+  const path = "job/PROJ-1/list/plain.md";
+  write(
+    root,
+    path,
+    plainTask.replace(
+      "## 結果",
+      "## ログ\n\n### 準備\n\n#### 2026-09-01 本番リリース完了\n\n### 空\n\n#### 計画\n\n## 結果\n\n脚注[^1]、[手順](URL)、<img src=\"../assets/plain/x.png\">\n\n[^1]: 補足説明\n",
+    ),
+  );
+  const result = migrate("--apply");
+  assert.equal(result.status, 0, result.stderr);
+  const index = read(root, "jobs/PROJ-1/tasks/plain/index.md");
+  assert.match(index, /\[\^1\]: 補足説明/);
+  assert.match(index, /\[手順\]\(URL\)/);
+  assert.match(index, /\* \[準備\]\(01-phase1\.md\)\n\n## 結果/, "骨組みだけのフェーズ「空」は省く");
+  assert.equal(read(root, "jobs/PROJ-1/tasks/plain/01-phase1.md"), "# 準備\n\n## 2026-09-01 本番リリース完了\n");
+});
+
+test("HTML の参照と分割後のアンカーは保留に出す", () => {
+  write(root, "job/PROJ-1/list/plain.md", plainTask.replace("なし", "<img src=\"../assets/plain/x.png\"> [上](#タイトル)\n\n## ログ\n\n### 記録\n\n本文"));
+  const result = migrate("--dry-run");
+  assert.match(result.stdout, /HTML の src\/href は書き換えない .*plain\/index\.md/);
+  assert.match(result.stdout, /同じファイル内のアンカー/);
+});
+
+test("qa/ の下の未知のディレクトリがあれば中止する", () => {
+  write(root, "job/PROJ-1/qa/assets/shot.png", "png");
+  const before = snapshot(root);
+  const result = migrate("--apply");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /分類できないファイル: job\/PROJ-1\/qa\/assets/);
+  assert.deepEqual(snapshot(root), before);
+});
+
+test("CRLF の .gitignore とタブで整形した package.json の書式を保つ", () => {
+  write(root, ".gitignore", "node_modules/\r\njob/*/assets/e2e/node_modules/\r\n");
+  write(root, "package.json", '{\n\t"name": "old"\n}\n');
+  assert.equal(migrate("--apply").status, 0);
+  assert.equal(read(root, ".gitignore"), "node_modules/\r\njobs/*/assets/e2e/node_modules/\r\n\r\n# raprid (案件操作のロックと移行時の退避先)\r\njobs/.locks/\r\n.raprid-migrate/\r\n");
+  assert.equal(read(root, "package.json"), '{\n\t"name": "old",\n\t"scripts": {\n\t\t"raprid": "node scripts/cli.ts"\n\t}\n}\n');
+});

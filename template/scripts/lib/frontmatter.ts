@@ -13,7 +13,8 @@ interface Entry {
   end: number; // 続く配列項目を含む (exclusive)
 }
 
-const keyLine = /^([A-Za-z_][A-Za-z0-9_-]*):(.*)$/;
+// "key:値" のようにコロンの直後が空白でない行は YAML の項目ではないので対応外とする
+const keyLine = /^([A-Za-z_][A-Za-z0-9_-]*):((?:\s.*)?)$/;
 const itemLine = /^\s+-(?:\s+(.*))?$/;
 
 function stripComment(value: string): string {
@@ -34,10 +35,26 @@ function stripComment(value: string): string {
 
 function unquote(value: string): string {
   const trimmed = value.trim();
-  if (trimmed.length >= 2 && (trimmed[0] === '"' || trimmed[0] === "'") && trimmed.at(-1) === trimmed[0]) {
-    return trimmed.slice(1, -1);
+  if (trimmed.length >= 2 && trimmed[0] === "'" && trimmed.at(-1) === "'") return trimmed.slice(1, -1).replaceAll("''", "'");
+  if (trimmed.length >= 2 && trimmed[0] === '"' && trimmed.at(-1) === '"') {
+    try {
+      return JSON.parse(trimmed) as string;
+    } catch {
+      throw new FrontmatterError(`対応していない引用符の書式です (${trimmed})`);
+    }
   }
   return trimmed;
+}
+
+// 読み戻したときに同じ値になるよう、必要なときだけ二重引用符で囲む
+export function yamlScalar(value: string): string {
+  if (value === "" || /\s#|^[#'"[\]{}&*!|>%@`]|^-\s|\s$|^\s/.test(value)) return JSON.stringify(value);
+  return value;
+}
+
+function commentOf(value: string): string {
+  const stripped = stripComment(value);
+  return value.slice(stripped.length);
 }
 
 export class Frontmatter {
@@ -120,6 +137,8 @@ export class Frontmatter {
     if (inline.startsWith("[")) {
       if (!inline.endsWith("]")) throw new FrontmatterError(`配列の書式が不正です (${key})`);
       const inner = inline.slice(1, -1).trim();
+      // 引用符付きの要素は区切りの判定が曖昧になるため、推測で分割しない
+      if (/["']/.test(inner)) throw new FrontmatterError(`引用符を含むインライン配列には対応していません (${key})`);
       return inner === "" ? [] : inner.split(",").map(unquote);
     }
     if (inline !== "") return [unquote(inline)];
@@ -129,14 +148,17 @@ export class Frontmatter {
       .filter((value) => value !== "");
   }
 
+  // 値はそのまま書く。利用者の入力を書くときは yamlScalar で囲む。項目の行末コメントは残す
   set(key: string, value: string | string[]): void {
+    const entry = this.find(key);
+    const original = entry ? commentOf(keyLine.exec(this.lines[entry.start])![2]).trim() : "";
+    const comment = original ? ` ${original}` : "";
     let rendered: string[];
     if (Array.isArray(value)) {
-      rendered = value.length === 0 ? [`${key}: []`] : [`${key}:`, ...value.map((item) => `  - ${item}`)];
+      rendered = value.length === 0 ? [`${key}: []${comment}`] : [`${key}:${comment}`, ...value.map((item) => `  - ${item}`)];
     } else {
-      rendered = [value === "" ? `${key}:` : `${key}: ${value}`];
+      rendered = [value === "" ? `${key}:${comment}` : `${key}: ${value}${comment}`];
     }
-    const entry = this.find(key);
     if (entry) this.lines.splice(entry.start, entry.end - entry.start, ...rendered);
     else this.lines.push(...rendered);
   }

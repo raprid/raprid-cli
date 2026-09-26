@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { yamlScalar } from "./frontmatter.ts";
 import { templatesDir } from "./root.ts";
 
 // {{name}} を一度だけ置き換える。値の中の {{...}} は再展開しない
@@ -15,5 +16,5 @@ export function renderTemplate(path: string, values: Record<string, string>): st
 }
 
 export function blockedByLines(blockedBy: string | undefined): string {
-  return blockedBy ? `blockedBy:\n  - ${blockedBy}` : "blockedBy: []";
+  return blockedBy ? `blockedBy:\n  - ${yamlScalar(blockedBy)}` : "blockedBy: []";
 }

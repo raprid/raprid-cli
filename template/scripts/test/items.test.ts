@@ -204,3 +204,34 @@ test("入口の使い方と終了コード", () => {
   const protocol = raprid(root, ["--protocol"]);
   assert.deepEqual(JSON.parse(protocol.stdout), { format: 1, protocol: 1 });
 });
+
+test("行末コメント・引用符・特殊文字を含む値を保つ", () => {
+  ok(["task", "add", "PROJ-1", "a", "todo", "A"]);
+  const path = "jobs/PROJ-1/tasks/a/index.md";
+  write(root, path, read(root, path).replace("status: todo", "status: todo # 状態"));
+  ok(["task", "move", "PROJ-1", "T-001", "pending", "other: #123 の回答"]);
+  const text = read(root, path);
+  assert.match(text, /status: pending # 状態\n/);
+  assert.match(text, /blockedBy:\n  - "other: #123 の回答"\n/);
+  assert.match(ok(["task", "list", "PROJ-1"]).stdout, /待ち: other: #123 の回答/);
+
+  write(root, path, read(root, path).replace('blockedBy:\n  - "other: #123 の回答"', 'blockedBy: ["a, b"]'));
+  const quoted = raprid(root, ["task", "move", "PROJ-1", "T-001", "todo"]);
+  assert.equal(quoted.status, 0, "blockedBy は置き換えるだけなので読めなくても進める");
+  write(root, path, read(root, path).replace("test: []", "test:x"));
+  assert.equal(raprid(root, ["task", "move", "PROJ-1", "T-001", "progress"]).status, 1, "key:値 は対応外");
+});
+
+test("見出しに角括弧を含む詳細のリンクを壊さない", () => {
+  ok(["task", "add", "PROJ-1", "a", "todo", "A"]);
+  ok(["task", "note", "PROJ-1", "T-001", "fix", "[重要] 修正"]);
+  assert.match(read(root, "jobs/PROJ-1/tasks/a/index.md"), /\* \[\\\[重要\\\] 修正\]\(01-fix\.md\)/);
+});
+
+test("index.md の無いディレクトリは採番前に報告する", () => {
+  mkdirSync(join(root, "jobs/PROJ-1/qa/assets"));
+  const result = raprid(root, ["qa", "add", "PROJ-1", "q", "internal", "質問"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /index\.md の無いディレクトリがあります: jobs\/PROJ-1\/qa\/assets/);
+  assert.match(ok(["qa", "list", "PROJ-1"]).stdout, /index\.md が無い: jobs\/PROJ-1\/qa\/assets/);
+});

@@ -44,10 +44,12 @@ function protocolOf(root: string): number | undefined {
   }
 }
 
-// 旧構成: job/ に操作スクリプトか job/<案件>/list/ がある
+// 旧構成: 管理リポジトリの目印 (.git か CLAUDE.md / AGENTS.md) があり、job/ に操作スクリプトか job/<案件>/list/ がある。
+// 目印を求めるのは、ホームなど無関係な job/ を旧プロジェクトとみなして移行しないため
 function isLegacy(root: string): boolean {
   const job = join(root, "job");
   if (!isDirectory(job)) return false;
+  if (![".git", "CLAUDE.md", "AGENTS.md"].some((name) => exists(join(root, name)))) return false;
   if (exists(join(job, "task-transition.sh")) || exists(join(job, "add-task.sh"))) return true;
   return readdirSync(job).some((name) => isDirectory(join(job, name, "list")));
 }
@@ -126,6 +128,9 @@ export function delegate(argv: string[], loadBundle: () => TemplateBundle, cwd =
 
   const min = Math.min(...supportedProtocols);
   const max = Math.max(...supportedProtocols);
+  if (!Number.isInteger(project.protocol) || (project.protocol >= min && project.protocol <= max && !supportedProtocols.includes(project.protocol))) {
+    throw new DelegateError(`このプロジェクトの scripts/ の protocol (${project.protocol}) は、この raprid が対応する版 (${supportedProtocols.join(", ")}) ではありません。`);
+  }
   if (project.protocol > max) {
     throw new DelegateError(
       `このプロジェクトの scripts/ (protocol ${project.protocol}) は、この raprid (対応: ${min}〜${max}) より新しい版です。\n` +
@@ -144,5 +149,6 @@ export function delegate(argv: string[], loadBundle: () => TemplateBundle, cwd =
       `旧構成の job/ が残っています: ${project.root}\n` + "raprid job migrate --dry-run で移行計画を確認してください。",
     );
   }
-  return run(join(project.root, "scripts", "cli.ts"), argv, childEnv());
+  // scripts/ がシンボリックリンクでも、判定したルートを操作先にする
+  return run(join(project.root, "scripts", "cli.ts"), argv, childEnv({ RAPRID_ROOT: project.root }));
 }

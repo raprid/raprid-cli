@@ -100,6 +100,7 @@ export class Job {
     const seen = new Set<string>();
     let max = 0;
     for (const item of this.items(kind)) {
+      if (!isFile(item.index)) throw new CliError(`index.md の無いディレクトリがあります: ${this.display(item.dir)}`);
       const id = item.id();
       if (!new RegExp(`^${prefix}-\\d{3,}$`).test(id)) {
         throw new CliError(`既存の${item.label}のIDが未設定または不正です: ${this.display(item.index)} (${id || "未設定"})`);

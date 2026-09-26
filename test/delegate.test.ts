@@ -66,6 +66,8 @@ test("標準出力・標準エラー・終了コードをそのまま返す", ()
 
 test("pnpm raprid と raprid は同じ処理を呼ぶ", { skip: spawnSync("pnpm", ["--version"]).status !== 0 }, () => {
   const root = project("p");
+  // pnpm は実行前に依存が無いと自動で入れ、その出力が混ざるため、先に入れておく
+  assert.equal(spawnSync("pnpm", ["install", "--silent", "--offline"], { cwd: root }).status, 0);
   const viaPnpm = spawnSync("pnpm", ["-s", "raprid", "task", "list", "other"], { cwd: root, encoding: "utf8" });
   assert.equal(viaPnpm.status, 0, viaPnpm.stderr);
   assert.equal(viaPnpm.stdout, raprid(root, ["task", "list", "other"]).stdout);
@@ -133,6 +135,7 @@ function legacy(root: string): void {
   symlinkSync("../../list/api.md", join(root, "job/PROJ-1/status/todo/api.md"));
   mkdirSync(join(root, "job/PROJ-1/qa/list"), { recursive: true });
   write(root, "README.md", "[API](job/PROJ-1/list/api.md)\n");
+  write(root, "CLAUDE.md", "# CLAUDE.md\n");
 }
 
 test("scripts/ の無い旧プロジェクトは同梱の移行処理で移行でき、以後は委譲する", () => {
@@ -171,4 +174,34 @@ test("移行処理の一時展開は後に残さない", () => {
   const temp = mkdtempSync(join(work, "tmp-"));
   assert.equal(raprid(root, ["job", "migrate"], { TMPDIR: temp }).status, 0);
   assert.equal(spawnSync("ls", ["-A", temp], { encoding: "utf8" }).stdout, "");
+});
+
+test("scripts/ がシンボリックリンクでも判定したルートを操作する", () => {
+  const root = project("p");
+  const shared = join(work, "shared");
+  mkdirSync(shared);
+  spawnSync("mv", [join(root, "scripts"), join(shared, "scripts")]);
+  symlinkSync(join(shared, "scripts"), join(root, "scripts"));
+  const result = raprid(root, ["job", "create", "LINKED"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(existsSync(join(root, "jobs", "LINKED")));
+  assert.equal(existsSync(join(shared, "jobs")), false);
+});
+
+test("管理リポジトリの目印の無い job/ は旧プロジェクトとみなさない", () => {
+  const home = join(work, "home");
+  mkdirSync(join(home, "job", "x", "list"), { recursive: true });
+  const result = raprid(join(home, "job"), ["job", "migrate", "--apply"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /管理リポジトリが見つかりません/);
+});
+
+test("対応表に無い protocol (小数など) は委譲しない", () => {
+  const root = project("p");
+  const pkgPath = join(root, "scripts", "package.json");
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+  writeFileSync(pkgPath, JSON.stringify({ ...pkg, raprid: { ...pkg.raprid, protocol: 1.5 } }));
+  const result = raprid(root, ["task", "list"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /protocol \(1\.5\)/);
 });
