@@ -66,9 +66,15 @@ test("標準出力・標準エラー・終了コードをそのまま返す", ()
 
 test("pnpm raprid と raprid は同じ処理を呼ぶ", { skip: spawnSync("pnpm", ["--version"]).status !== 0 }, () => {
   const root = project("p");
-  // pnpm は実行前に依存が無いと自動で入れ、その出力が混ざるため、先に入れておく
-  assert.equal(spawnSync("pnpm", ["install", "--silent", "--offline"], { cwd: root }).status, 0);
-  const viaPnpm = spawnSync("pnpm", ["-s", "raprid", "task", "list", "other"], { cwd: root, encoding: "utf8" });
+  // pnpm は実行前に依存を確認して自動で入れることがある。raprid スクリプトは依存を使わないので確認を省き、
+  // 空のストア・オフラインでも install なしに動く (ローカルのストアやネットワークに依存しない) ことを確かめる
+  const store = mkdtempSync(join(work, "store-"));
+  const viaPnpm = spawnSync(
+    "pnpm",
+    ["--config.verify-deps-before-run=false", `--config.store-dir=${store}`, "--config.offline=true", "-s", "raprid", "task", "list", "other"],
+    { cwd: root, encoding: "utf8" },
+  );
+  assert.equal(existsSync(join(root, "node_modules")), false, "依存をインストールしていない");
   assert.equal(viaPnpm.status, 0, viaPnpm.stderr);
   assert.equal(viaPnpm.stdout, raprid(root, ["task", "list", "other"]).stdout);
 });

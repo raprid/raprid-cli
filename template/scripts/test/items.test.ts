@@ -235,3 +235,26 @@ test("index.md の無いディレクトリは採番前に報告する", () => {
   assert.match(result.stderr, /index\.md の無いディレクトリがあります: jobs\/PROJ-1\/qa\/assets/);
   assert.match(ok(["qa", "list", "PROJ-1"]).stdout, /index\.md が無い: jobs\/PROJ-1\/qa\/assets/);
 });
+
+test("引用符と # を含む blockedBy を一覧で完全に表示する", () => {
+  ok(["task", "add", "PROJ-1", "a", "pending", "A", 'other: He said "x # y"']);
+  assert.match(read(root, "jobs/PROJ-1/tasks/a/index.md"), /blockedBy:\n  - "other: He said \\"x # y\\""\n/);
+  assert.match(ok(["task", "list", "PROJ-1"]).stdout, /A \(待ち: other: He said "x # y"\)/);
+  // 値の途中の引用符は文字として扱い、" #" 以降はコメントとして除く (YAML と同じ)
+  const path = "jobs/PROJ-1/tasks/a/index.md";
+  write(root, path, read(root, path).replace(/blockedBy:\n  - .*\n/, "blockedBy:\n  - other: it's ready # メモ\n  - 'it''s # quoted'\n"));
+  assert.match(ok(["task", "list", "PROJ-1"]).stdout, /待ち: other: it's ready, it's # quoted\)/);
+});
+
+test("pending で blockedBy が空のタスクを要確認として報告する", () => {
+  ok(["task", "add", "PROJ-1", "a", "todo", "A"]);
+  const path = "jobs/PROJ-1/tasks/a/index.md";
+  write(root, path, read(root, path).replace("status: todo", "status: pending"));
+  const link = join(root, "jobs/PROJ-1/status/todo/a");
+  unlinkSync(link);
+  symlinkSync("../../tasks/a", join(root, "jobs/PROJ-1/status/pending/a"));
+  const result = ok(["task", "list", "PROJ-1"]);
+  assert.match(result.stdout, /要確認:\n    pending なのに blockedBy が空: a/);
+  ok(["task", "move", "PROJ-1", "T-001", "pending", "qa/Q-001"]);
+  assert.doesNotMatch(ok(["task", "list", "PROJ-1"]).stdout, /要確認/);
+});

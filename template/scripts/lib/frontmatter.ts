@@ -18,13 +18,19 @@ const keyLine = /^([A-Za-z_][A-Za-z0-9_-]*):((?:\s.*)?)$/;
 const itemLine = /^\s+-(?:\s+(.*))?$/;
 
 function stripComment(value: string): string {
-  // 引用符の外にある " #" 以降をコメントとして除く
+  // 引用符の外にある " #" 以降をコメントとして除く。
+  // YAML と同じく、引用符は値の先頭にあるときだけ引用として扱う (途中の ' や " は文字)。
+  // 二重引用符の中は \ によるエスケープ、単一引用符の中は '' を 1 文字として読む
   let quote = "";
   for (let i = 0; i < value.length; i++) {
     const char = value[i];
-    if (quote) {
-      if (char === quote) quote = "";
-    } else if (char === "'" || char === '"') {
+    if (quote === '"') {
+      if (char === "\\") i++;
+      else if (char === '"') quote = "";
+    } else if (quote === "'") {
+      if (char === "'" && value[i + 1] === "'") i++;
+      else if (char === "'") quote = "";
+    } else if ((char === "'" || char === '"') && value.slice(0, i).trim() === "") {
       quote = char;
     } else if (char === "#" && (i === 0 || /\s/.test(value[i - 1]))) {
       return value.slice(0, i);

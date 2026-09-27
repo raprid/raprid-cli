@@ -129,6 +129,17 @@ export function listItems(job: Job, kind: Kind, describe: (item: Item) => string
   }
   for (const [id, names] of byId) if (names.length > 1) issues.push(`ID重複: ${id} (${names.join(", ")})`);
   const names = new Set(items.map((item) => item.name));
+  // pending は待っている相手 (blockedBy) が必須
+  if (kind === "task") {
+    for (const item of items) {
+      if (statusOf.get(item) !== "pending") continue;
+      try {
+        if ((item.frontmatter().getList("blockedBy") ?? []).length === 0) issues.push(`pending なのに blockedBy が空: ${item.name}`);
+      } catch (error) {
+        issues.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
   for (const item of items) {
     try {
       const links = item.links();
