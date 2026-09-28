@@ -37,6 +37,15 @@ export function isSelector(kind: Kind, value: string): boolean {
   return idPattern.test(value) || namePattern.test(value);
 }
 
+// 複数の案件を名前順にロックする (順序を揃えてデッドロックを避け、同じ案件は二重に取らない)。
+// 途中で取得に失敗したら、それまでに取ったロックは withLock の finally で外れる
+export function withJobLocks<T>(root: string, names: string[], fn: () => T): T {
+  const sorted = [...new Set(names)].sort(compareText);
+  const locks = join(root, "jobs", ".locks");
+  const acquire = (index: number): T => (index >= sorted.length ? fn() : withLock(join(locks, sorted[index]), locks, () => acquire(index + 1)));
+  return acquire(0);
+}
+
 export class Job {
   readonly root: string;
   readonly name: string;

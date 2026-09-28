@@ -168,12 +168,13 @@ node scripts/cli.ts task list PROJ-123 # pnpm も無い環境
 | `raprid job list [--search <文字列>] [--json]` | 案件を名前順に一覧表示する |
 | `raprid task list [<案件名>] [--status <状態,...> \| --all] [--search <文字列>] [--long] [--json]` | 状態別の一覧 (既定は done 以外)。ID の重複・索引の不一致も「要確認」に報告する |
 | `raprid task show <案件名> <ID\|名前> [--json]` | 1 件の詳細 (actor・日付・依存・本文・診断) |
-| `raprid task move <案件名> <ID\|名前> <状態> [blockedBy]` | 状態・日付・依存関係と状態索引を一緒に更新する |
+| `raprid task move <案件名> <ID\|名前> <状態> [blockedBy] [--if-match <revision>] [--json]` | 状態・日付・依存関係と状態索引を一緒に更新する。pending から離れるときは待っている QA の解決を確かめる |
 | `raprid task note <案件名> <ID\|名前> <詳細名> [<見出し>]` | 詳細 md を連番で作り、`index.md` の「## 詳細」からリンクする |
 | `raprid qa add <案件名> <QA名> <確認先> <質問内容> [blockedBy]` | QA を追加する |
 | `raprid qa list [<案件名>] [--status <状態,...> \| --all] [--search <文字列>] [--long] [--json]` | QA の一覧 (既定は unresolved) |
 | `raprid qa show <案件名> <ID\|名前> [--json]` | 1 件の詳細 (質問・回答・確認先・回答者) |
 | `raprid qa resolve <案件名> <ID\|名前> <回答>` | 回答を記入して resolved にする |
+| `raprid qa resolve <案件名> <ID\|名前> --answer-file <パス\|-> --answered-by <actor> [--if-match <revision>] [--json]` | 複数行の Markdown を回答にして resolved にする (`-` は標準入力) |
 | `raprid qa move <案件名> <ID\|名前> unresolved` | 再オープンする (回答は残す) |
 | `raprid ui snapshot [<案件名>] --json` | TUI (`raprid tui`) 用に案件・タスク・QA・診断を全状態で一括取得する |
 | `raprid log create <agent名> [--date] [--session]` | セッションログを作る (`pnpm log:create` も同じ) |
@@ -220,13 +221,32 @@ Git リポジトリの境界 (`.git` のあるディレクトリ) より上は�
 QA は `question`・`answer` (Markdown)・`askTo`・`answeredBy`・`resolvedAt` を持つ。値が無い項目は `null`。
 issues は `code`・`severity` (warning / error)・`job`・`kind`・`id`・`path`・`message`。
 診断があっても取得できた場合は終了コード 0。順序は案件名 → 状態 → 数値 ID → パスで、環境のロケールに依存しない。
-`node scripts/cli.ts --capabilities` は対応機能 (`{"schemaVersion":1,"capabilities":["query-v1"]}`) を返す。
+`node scripts/cli.ts --capabilities` は対応機能 (`{"schemaVersion":1,"capabilities":["query-v1","guarded-write-v1"]}`) を返す。
 `ui snapshot` は各ファイルを読み取った内容で一貫させるが、全体を排他したスナップショットではない。
 
 表示幅の計算に使う [string-width](https://github.com/sindresorhus/string-width) は、node_modules が無くても
 `node scripts/cli.ts` で動くよう `scripts/vendor/text-width.mjs` に依存ごと同梱している。
 版は `package.json` と `pnpm-lock.yaml` で固定し、`pnpm install && pnpm vendor:build` で同じ内容を再生成できる
 (ライセンスは `scripts/vendor/THIRD_PARTY_LICENSES.txt`)。生成物は直接編集しない。
+
+### 更新の競合と pending の解除
+
+`--capabilities` が `guarded-write-v1` を含む scripts/ は、次の保護付きの更新に対応する (`raprid tui` の回答・状態変更が使う)。
+
+* `--if-match <revision>`: 案件のロックを取った後に index.md を読み直し、`show --json` の `revision` と一致しなければ
+  `REVISION_CONFLICT` (終了コード 1) で何も変えない。省略すると従来どおり確かめない
+* `--answer-file`: UTF-8 で 1 MiB までの複数行 Markdown。空白だけ・上限超過・UTF-8 でない・閉じていないコードブロックは
+  変更前に拒否する (終了コード 2)。改行は LF にそろえ、回答欄では `<!-- raprid:answer:begin -->` と
+  `<!-- raprid:answer:end -->` で囲んで、見出しやコードブロックを含んでも次の読み取りで回答が切れないようにする。
+  1 行の位置引数の回答は従来どおり (区切りを付けない)。位置引数と `--answer-file` は同時に使えない
+* `--json` の成功時は `{schemaVersion, ok: true, item, issues}`、失敗時は `{schemaVersion, error: {code, message}}`
+* `task move` で pending から離れるとき、`blockedBy` の QA (`qa/Q-001`・`qa/<案件名>/Q-001`) をロック内で読み直し、
+  未解決・見つからない・ID が重複して特定できないものがあれば `BLOCKED_BY_QA` で拒否する。
+  対象の案件と QA の案件は名前順にロックする (同じ案件は二重に取らない)。`task/…`・`other: …` は確かめず、
+  利用者の判断で解除する。QA を解決してもタスクは自動では再開しない (`qa resolve` が再開待ちのタスクを案内する)
+
+この保護はロック (`jobs/.locks/`) を使う raprid 同士の間で成り立つ。ロックを使わずにエディタで直接書き換えた場合は、
+読み取りと置き換えの間の変更を完全には防げない (保存直前の revision の確認と、競合時に上書きしないことで保護する)。
 
 `scripts/` 自身の変更は通常のコード変更と同じくテストしてからコミットする (`pnpm typecheck`、`pnpm test`)。
 スキル付属の補助スクリプト (`count_tokens.sh` など) はスキルの中に置き、`scripts/` には移さない。

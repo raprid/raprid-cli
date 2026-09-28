@@ -19,7 +19,12 @@ import {
   type UiState,
   unresolvedCount,
   initialState,
+  inForm,
+  type WriteRequest,
 } from "./model.js";
+import { applyWriteOutcome, knownRejections, pasteIntoForm, type WriteOutcome, writeConfirmed } from "./actions.js";
+import { type Backend, BackendError } from "./backend.js";
+import { FormView, formHints } from "./forms.js";
 import type { DetailStore, SnapshotState, SnapshotStore } from "./stores.js";
 import { type Line, padEnd, sanitize, truncate, width, wrapLines } from "./text.js";
 import { statusOrder } from "./types.js";
@@ -29,6 +34,8 @@ export interface AppProps {
   details: DetailStore;
   initialJob: string | null;
   projectName: string;
+  writer?: Pick<Backend, "resolveQa" | "moveTask" | "show">; // 更新操作 (guarded-write-v1 に対応しているときだけ渡す)
+  actor?: string | null;
   columns?: number; // 試験用に端末の大きさを固定する
   rows?: number;
   onUnmount?: () => void; // 画面が閉じるとき (シグナルによる終了を含む) に子プロセスを止める
@@ -139,8 +146,8 @@ function Dialog(props: { title: string; width: number; height: number; lines: { 
   return (
     <Box flexDirection="column" width={props.width} height={props.height} borderStyle="double" borderColor="cyan">
       <Text bold>{props.title}</Text>
-      {props.lines.slice(0, Math.max(0, props.height - 3)).map((line, index) => (
-        <Text key={index} inverse={line.selected} dimColor={line.dim} wrap="truncate-end">
+      {(props.lines.length > props.height - 3 ? [...props.lines.slice(0, Math.max(0, props.height - 4)), { text: "…(端末を広げると残りを表示します)", dim: true }] : props.lines).map((line, index) => (
+        <Text key={index} inverse={"selected" in line && line.selected} dimColor={line.dim} wrap="truncate-end">
           {truncate(line.text, props.width - 2)}
         </Text>
       ))}
@@ -159,12 +166,15 @@ const helpLines = [
   "f             状態の絞り込み (Space で切替)",
   "v             完了済みも含む全件表示の切替",
   "r             再取得",
+  "a / m         QA に回答 / タスクの状態を変更 (確認してから保存)",
   "PgUp / PgDn   詳細のページ送り",
   "?             このヘルプ",
   "q / Ctrl+C    終了",
 ];
 
 function keyHints(state: UiState, panels: Panel[]): string {
+  const form = formHints(state);
+  if (form) return form;
   switch (state.mode.kind) {
     case "search":
       return "文字を入力して検索  Enter 確定  Esc 取消";
@@ -176,7 +186,7 @@ function keyHints(state: UiState, panels: Panel[]): string {
       return "Esc / ? で閉じる";
     default:
       if (state.narrowDetail) return "↑↓ PgUp/PgDn スクロール  Esc 一覧へ  q 終了";
-      return `↑↓ 移動  ${panels.length > 1 ? "Tab パネル  " : ""}1-3 種類  Enter 詳細  / 検索  g 案件  f 状態  v 全件  r 更新  ? ヘルプ  q 終了`;
+      return `↑↓ 移動  ${panels.length > 1 ? "Tab パネル  " : ""}1-3 種類  Enter 詳細  / 検索  g 案件  f 状態  v 全件  r 更新${state.writable ? "  a 回答  m 状態変更" : ""}  ? ヘルプ  q 終了`;
   }
 }
 
@@ -197,7 +207,7 @@ export function App(props: AppProps) {
   const rows = props.rows ?? size.rows;
   const snap = useSyncExternalStore(props.snapshots.subscribe, props.snapshots.getState);
   const detail = useSyncExternalStore(props.details.subscribe, props.details.getState);
-  const [state, setState] = useState(() => initialState(props.initialJob));
+  const [state, setState] = useState(() => initialState(props.initialJob, { actor: props.actor ?? null, writable: props.writer !== undefined }));
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -247,26 +257,63 @@ export function App(props: AppProps) {
   const lines = useMemo(() => wrapLines(detailLines(selected, detail, snapshot), detailInner), [selected, detail, snapshot, detailInner]);
   const scroll = Math.min(state.detailScroll, Math.max(0, lines.length - innerHeight));
 
+  const apply = (next: UiState, effects: Effect[]) => {
+    stateRef.current = next;
+    setState(next);
+    run(effects);
+  };
+
+  // 保存する。結果が分からない失敗は実体を読み直して確かめ、自動では再送しない
+  const write = async (request: WriteRequest) => {
+    const writer = props.writer;
+    if (!writer) return;
+    const { target } = request;
+    let outcome: WriteOutcome;
+    try {
+      const result =
+        request.type === "answer"
+          ? await writer.resolveQa(target.job, target.name, request.answer, request.actor, target.revision)
+          : await writer.moveTask(target.job, target.name, request.status, request.blockedBy, target.revision);
+      outcome = { ok: true, result };
+    } catch (error) {
+      const code = error instanceof BackendError ? error.code : "FAILED";
+      const message = error instanceof Error ? error.message : String(error);
+      let latest;
+      try {
+        latest = (await writer.show(target.kind, target.job, target.name)).item;
+      } catch {
+        latest = undefined;
+      }
+      if (!knownRejections.has(code) && latest && writeConfirmed(request, latest)) outcome = { ok: true, result: { schemaVersion: 1, ok: true, item: latest, issues: [] }, confirmed: true };
+      else outcome = { ok: false, code, message, latest };
+    }
+    const result = applyWriteOutcome(stateRef.current, outcome, props.snapshots.getState().snapshot);
+    apply(result.state, result.effects);
+  };
+
   const run = (effects: Effect[]) => {
     for (const effect of effects) {
       if (effect === "exit") exit();
-      if (effect === "refresh") {
+      else if (effect === "refresh") {
         props.snapshots.refresh();
         if (props.details.getState().error) props.details.reload();
-      }
+      } else void write(effect.request);
     }
   };
 
   useInput((input, key) => {
-    const result = handleKey(stateRef.current, input, key, { rows: list, jobs, layout, detailHeight: innerHeight, detailLength: lines.length });
-    stateRef.current = result.state;
-    setState(result.state);
-    run(result.effects);
+    const result = handleKey(stateRef.current, input, key, { rows: list, selected, snapshot, jobs, layout, detailHeight: innerHeight, detailLength: lines.length });
+    apply(result.state, result.effects);
   });
 
-  // 貼り付けは検索欄にだけ入れる (改行は空白にする)
+  // 貼り付けは入力欄に入れる (回答欄は改行も保つ。検索欄などでは空白にする)
   usePaste((text) => {
     const current = stateRef.current;
+    if (inForm(current)) {
+      const next = pasteIntoForm(current, text);
+      if (next !== current) apply(next, []);
+      return;
+    }
     if (current.mode.kind !== "search") return;
     const draft = current.mode.draft + sanitize(text);
     const next: UiState = { ...current, search: draft, mode: { ...current.mode, draft }, selection: { ...current.selection, [current.tab]: { key: null, index: 0 } } };
@@ -286,7 +333,8 @@ export function App(props: AppProps) {
 
   const status = fetchStatus(snap);
   const unresolved = unresolvedCount(snapshot, state.job);
-  const header = `raprid tui  ${sanitize(props.projectName)}  案件: ${sanitize(state.job ?? "全案件")}  未解決QA ${unresolved}  `;
+  const who = state.writable ? (state.actor ? `更新者 ${state.actor}  ` : "") : "閲覧のみ  ";
+  const header = `raprid tui  ${sanitize(props.projectName)}  案件: ${sanitize(state.job ?? "全案件")}  未解決QA ${unresolved}  ${who}`;
   const tabs = (["task", "qa", "issues"] as Tab[])
     .map((tab, number) => (tab === state.tab ? `[${number + 1} ${tabLabels[tab]} ${rowsByTab[tab].length}]` : ` ${number + 1} ${tabLabels[tab]} ${rowsByTab[tab].length} `))
     .join(" ");
@@ -294,7 +342,9 @@ export function App(props: AppProps) {
   const notice = state.mode.kind === "search" ? `/${sanitize(state.mode.draft)}▏` : state.notice ?? filterSummary(state);
 
   let body: ReactNode;
-  if (state.mode.kind === "help") {
+  if (inForm(state)) {
+    body = <FormView state={state} snapshot={snapshot} width={columns} height={bodyHeight} />;
+  } else if (state.mode.kind === "help") {
     body = <Dialog title="操作" width={Math.min(columns, 60)} height={bodyHeight} lines={helpLines.map((text) => ({ text }))} />;
   } else if (state.mode.kind === "jobPicker") {
     const mode = state.mode;

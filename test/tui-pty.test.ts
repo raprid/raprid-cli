@@ -217,3 +217,71 @@ test("端末でない・TERM=dumb・非対応の scripts/・存在しない案�
     rmSync(outside, { recursive: true, force: true });
   }
 });
+
+test("複数行の回答と貼り付けを保存し、別の CLI の回答と競合したら上書きせずに下書きを残す", { skip }, () => {
+  const root = join(work, "write");
+  assert.equal(spawnSync(process.execPath, [cli, "init", root], { encoding: "utf8" }).status, 0);
+  const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: root, env, encoding: "utf8" });
+  assert.equal(run("job", "create", "PROJ-1").status, 0);
+  assert.equal(run("task", "add", "PROJ-1", "impl", "progress", "実装する").status, 0);
+  assert.equal(run("task", "ask", "PROJ-1", "T-001", "policy", "customer", "方針はこれでよいか").status, 0);
+  assert.equal(run("qa", "add", "PROJ-1", "second", "internal", "二つ目の質問").status, 0);
+
+  const saved = pty(
+    ["tui", "PROJ-1", "--actor", "human/tester"],
+    [
+      { expect: "> T-001", timeout: 10 },
+      { send: "2", after: 0.3 },
+      { send: "a", after: 0.3 },
+      { expect: "Q-001 への回答" },
+      { send: "日本語の回答", after: 0.1 },
+      { send: "\r", after: 0.1 },
+      { send: "\u001b[200~## 貼り付けた見出し\r\n\r\n```sh\n## コード\n```\u001b[201~", after: 0.3 },
+      { send: "\t", after: 0.2 },
+      { send: "\r", after: 0.3 },
+      { expect: "この内容で回答を保存しますか" },
+      { send: "\r", after: 0.2 },
+      { expect: "Q-001 に回答しました", timeout: 8 },
+      { expect: "を待っていたタスク" },
+      { send: "\u001b", after: 0.3 },
+      { send: "q" },
+    ],
+    { cwd: root },
+  );
+  allFound(saved);
+  assert.equal(saved.exitCode, 0);
+  assertRestored(saved);
+  const answer = JSON.parse(run("qa", "show", "PROJ-1", "Q-001", "--json").stdout).item;
+  assert.equal(answer.answer, "日本語の回答\n## 貼り付けた見出し\n\n```sh\n## コード\n```");
+  assert.equal(answer.answeredBy, "human/tester");
+  assert.equal(JSON.parse(run("task", "show", "PROJ-1", "T-001", "--json").stdout).item.status, "pending", "回答してもタスクは自動で再開しない");
+
+  const conflict = pty(
+    ["tui", "PROJ-1", "--actor", "human/tester"],
+    [
+      { expect: "> T-001", timeout: 10 },
+      { send: "2", after: 0.3 },
+      { expect: "> Q-002" },
+      { send: "a", after: 0.3 },
+      { send: "TUI の下書き", after: 0.2 },
+      { run: [process.execPath, cli, "qa", "resolve", "PROJ-1", "Q-002", "CLI の回答", "--answered-by", "human/cli"] },
+      { send: "\t", after: 0.2 },
+      { send: "\r", after: 0.3 },
+      { send: "\r", after: 0.2 },
+      { expect: "競合したため保存しませんでした", timeout: 8 },
+      { expect: "CLI の回答" },
+      { expect: "TUI の下書き" },
+      { send: "\u001b", after: 0.3 },
+      { expect: "破棄しますか" },
+      { send: "y", after: 0.3 },
+      { send: "q" },
+    ],
+    { cwd: root },
+  );
+  allFound(conflict);
+  assert.equal(conflict.exitCode, 0);
+  assertRestored(conflict);
+  const second = JSON.parse(run("qa", "show", "PROJ-1", "Q-002", "--json").stdout).item;
+  assert.deepEqual([second.answer, second.answeredBy], ["CLI の回答", "human/cli"], "先に保存した回答を上書きしない");
+});

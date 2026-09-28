@@ -1,6 +1,6 @@
 // TUI の試験で使う snapshot と偽の backend
 
-import type { Backend } from "../src/tui/backend.js";
+import type { Backend, WriteResult } from "../src/tui/backend.js";
 import type { Issue, QaRecord, ShowResult, Snapshot, TaskRecord } from "../src/tui/types.js";
 
 export function task(id: string | null, fields: Partial<TaskRecord> = {}): TaskRecord {
@@ -113,6 +113,20 @@ export class FakeBackend implements Backend {
       if (record) reply.resolve(showOf(record));
       else reply.reject(new Error(`not found: ${selector}`));
     }
+    return reply.promise;
+  }
+
+  writeCalls: { args: unknown[]; reply: ReturnType<typeof deferred<WriteResult>> }[] = [];
+
+  resolveQa(job: string, selector: string, answer: string, answeredBy: string, revision: string): Promise<WriteResult> {
+    const reply = deferred<WriteResult>();
+    this.writeCalls.push({ args: ["resolveQa", job, selector, answer, answeredBy, revision], reply });
+    return reply.promise;
+  }
+
+  moveTask(job: string, selector: string, status: string, blockedBy: string | undefined, revision: string): Promise<WriteResult> {
+    const reply = deferred<WriteResult>();
+    this.writeCalls.push({ args: ["moveTask", job, selector, status, blockedBy, revision], reply });
     return reply.promise;
   }
 

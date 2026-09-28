@@ -16,7 +16,8 @@ import {
 } from "./records.ts";
 
 export const schemaVersion = 1;
-export const capabilities = ["query-v1"];
+// query-v1: 一覧・詳細・snapshot の JSON。guarded-write-v1: --if-match・--answer-file・更新の --json
+export const capabilities = ["query-v1", "guarded-write-v1"];
 
 export interface ListFilter {
   statuses: ReadonlySet<string> | "all";

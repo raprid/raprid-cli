@@ -11,6 +11,7 @@ import { CliError } from "./errors.ts";
 import { Frontmatter, FrontmatterError } from "./frontmatter.ts";
 import { isDirectory, isFile } from "./fsutil.ts";
 import { compareText, Job, type Kind, qaStatuses, taskStatuses } from "./jobs.ts";
+import { answerBegin, answerEnd } from "./guard.ts";
 import { fencedLines, findSection, splitLines } from "./markdown.ts";
 
 export type Severity = "warning" | "error";
@@ -140,7 +141,18 @@ function blank(value: string | undefined): string | null {
   return value === undefined || value === "" ? null : value;
 }
 
+// 回答内容。--answer-file の回答は区切り行で囲むので、見出しやコードブロックを含んでも途中で切れない
 export function answerOf(text: string): string | null {
+  const lines = splitLines(text);
+  const section = findSection(lines, 2, "回答内容");
+  if (section) {
+    let first = section.start + 1;
+    while (first < lines.length && lines[first].trim() === "") first++;
+    if (lines[first]?.trim() === answerBegin) {
+      const end = lines.findIndex((line, index) => index > first && line.trim() === answerEnd);
+      if (end > first) return lines.slice(first + 1, end).join("\n");
+    }
+  }
   const answer = sectionText(text, "回答内容");
   if (answer === null || ["未回答", "未回答。"].includes(answer.trim())) return null;
   return answer;

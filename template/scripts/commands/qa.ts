@@ -1,11 +1,16 @@
+import { readFileSync } from "node:fs";
 import { parse, singleLine } from "../lib/args.ts";
 import { actor } from "../lib/actor.ts";
 import { CliError, UsageError } from "../lib/errors.ts";
+import { Frontmatter } from "../lib/frontmatter.ts";
 import { localDate } from "../lib/fsutil.ts";
+import { answerBegin, answerEnd, assertRevision, parseIfMatch, readAnswer } from "../lib/guard.ts";
 import { assertNameFree, assertStatusDirs, createItem, moveItem } from "../lib/items.ts";
 import { Job, validateItemName } from "../lib/jobs.ts";
 import { listCommand, showCommand } from "../lib/listing.ts";
 import { fencedLines, findSection, splitLines } from "../lib/markdown.ts";
+import { findItem, ownIssues, printJson, recordJson, schemaVersion } from "../lib/query.ts";
+import { Collector } from "../lib/records.ts";
 import { projectRoot } from "../lib/root.ts";
 import { blockedByLines, renderTemplate } from "../lib/template.ts";
 import { displayUsage } from "../lib/view.ts";
@@ -15,6 +20,7 @@ export const usage = `使い方:
   raprid qa list [<案件名>] [--status <状態,...> | --all] [--search <文字列>] [--long] [--json]
   raprid qa show <案件名> <QA IDまたは名前> [--json]
   raprid qa resolve <案件名> <QA IDまたは名前> <回答> --answered-by <actor>
+  raprid qa resolve <案件名> <QA IDまたは名前> --answer-file <パス|-> --answered-by <actor> [--if-match <revision>] [--json]
   raprid qa move <案件名> <QA IDまたは名前> unresolved
   raprid qa move <案件名> <QA IDまたは名前> resolved <回答> --answered-by <actor>
 
@@ -24,6 +30,8 @@ actor: human/<識別子> | agent/<識別子>
 list は既定で unresolved を表示する (--all で全件、--status resolved で状態を指定)。
 --search は ID・名前・質問の部分一致 (大文字小文字を区別しない)。未知の状態と「要確認」は常に表示する。
 ${displayUsage}
+--answer-file は複数行の Markdown (UTF-8、1 MiB まで。- は標準入力) を回答にする。
+--if-match は show --json の revision。更新前に一致を確かめ、違えば REVISION_CONFLICT で何も変えない。
 
 例:
   raprid qa add PROJ-123 correction-policy customer "補正方法はこの方針でよいか" --requested-by agent/codex --created-by agent/codex
@@ -70,8 +78,9 @@ function show(argv: string[]): void {
   showCommand("qa", argv, usage);
 }
 
-// 回答欄の先頭に回答を入れる。既存のメモは残し、"未回答" の仮置きだけを置き換える
-function insertAnswer(text: string, answer: string, source: string): string {
+// 回答欄の先頭に回答を入れる。既存のメモは残し、"未回答" の仮置きだけを置き換える。
+// 複数行の回答 (--answer-file) は区切り行で囲み、見出しを含んでも次の読み取りで切れないようにする
+function insertAnswer(text: string, answer: string, source: string, marked: boolean): string {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = splitLines(text);
   const section = findSection(lines, 2, "回答内容");
@@ -85,16 +94,52 @@ function insertAnswer(text: string, answer: string, source: string): string {
     while (rest.length > 0 && rest[0].trim() === "") rest.shift();
   }
   const head = lines.slice(0, section.start + 1);
+  const body = marked ? [answerBegin, ...answer.split("\n"), answerEnd] : [answer];
   const separator = rest.length > 0 && rest[0].trim() !== "" ? [""] : [];
-  return [...head, "", answer, ...separator, ...(rest.length > 0 ? rest : [""])].join(eol);
+  return [...head, "", ...body, ...separator, ...(rest.length > 0 ? rest : [""])].join(eol);
 }
 
-function transition(jobName: string, selector: string, status: string, answer: string | undefined, answeredBy: string | undefined): void {
-  const job = Job.existing(projectRoot(), jobName);
-  job.lock(() => {
+interface TransitionOptions {
+  ifMatch?: string;
+  json?: boolean;
+  marked?: boolean;
+}
+
+// このQAを待っている pending のタスク (別案件からの qa/<案件名>/<ID> も含む)
+function waitingTasks(root: string, job: Job, id: string, name: string): { job: string; id: string; name: string }[] {
+  const local = new Set([`qa/${id}`, `qa/${name}`]);
+  const remote = new Set([`qa/${job.name}/${id}`, `qa/${job.name}/${name}`]);
+  const found: { job: string; id: string; name: string }[] = [];
+  for (const other of new Collector(root).jobs()) {
+    let tasks;
+    try {
+      tasks = other.items("task");
+    } catch {
+      continue;
+    }
+    for (const task of tasks) {
+      if (task.tryField("status") !== "pending") continue;
+      try {
+        const refs = task.frontmatter().getList("blockedBy") ?? [];
+        if (refs.some((value) => remote.has(value) || (other.name === job.name && local.has(value)))) found.push({ job: other.name, id: task.idOrEmpty(), name: task.name });
+      } catch {
+        // 読めない依存は list の要確認で報告される
+      }
+    }
+  }
+  return found;
+}
+
+function transition(jobName: string, selector: string, status: string, answer: string | undefined, answeredBy: string | undefined, options: TransitionOptions = {}): void {
+  const root = projectRoot();
+  const job = Job.existing(root, jobName);
+  const done = job.lock(() => {
     const item = job.find("qa", selector);
     assertStatusDirs(job, "qa");
-    const fm = item.frontmatter();
+    // revision の確認と書き換えは、ロック内で読み取った同じ内容に対して行う
+    const bytes = readFileSync(item.index);
+    assertRevision(options.ifMatch, bytes, job.display(item.index));
+    const fm = Frontmatter.parse(bytes.toString("utf8"), job.display(item.index));
     const old = fm.get("status") ?? "";
     if (!["unresolved", "resolved"].includes(old)) throw new CliError(`実体のstatusが不正です: ${old || "未設定"}`);
     for (const key of ["updatedAt", "resolvedAt"]) {
@@ -108,24 +153,25 @@ function transition(jobName: string, selector: string, status: string, answer: s
     if (status === "resolved" && fm.has("blockedBy")) fm.set("blockedBy", []);
     let updated = fm.toString();
     if (!findSection(splitLines(updated), 2, "回答内容")) throw new CliError(`回答内容の見出しがありません: ${job.display(item.index)}`);
-    if (answer !== undefined) updated = insertAnswer(updated, answer, job.display(item.index));
+    if (answer !== undefined) updated = insertAnswer(updated, answer, job.display(item.index), options.marked ?? false);
     const link = moveItem(item, status, updated);
-    console.log(`変更: ${fm.get("id")} / ${item.name} / ${old} -> ${status}`);
-    console.log(`実体: ${job.display(item.index)}`);
-    console.log(`索引: ${job.display(link)} -> ${job.linkTarget("qa", item.name)}`);
-    if (status === "resolved") {
-      const references = new Set([`qa/${fm.get("id")}`, `qa/${item.name}`]);
-      const waiting = job.items("task").filter((task) => {
-        if (task.tryField("status") !== "pending") return false;
-        try {
-          return (task.frontmatter().getList("blockedBy") ?? []).some((value) => references.has(value));
-        } catch {
-          return false;
-        }
-      });
-      for (const task of waiting) console.log(`再開待ち: ${task.idOrEmpty()} / ${task.name} (raprid task move ${job.name} ${task.idOrEmpty()} progress)`);
-    }
+    return { item, link, old, id: fm.get("id") ?? "" };
   });
+  const waiting = status === "resolved" ? waitingTasks(root, job, done.id, done.item.name) : [];
+  if (options.json) {
+    const collector = new Collector(root);
+    const data = collector.job(job);
+    const entry = findItem(data, "qa", done.item.name);
+    printJson({ schemaVersion, ok: true, item: recordJson(entry.record), issues: ownIssues(data, entry) });
+    return;
+  }
+  console.log(`変更: ${done.id} / ${done.item.name} / ${done.old} -> ${status}`);
+  console.log(`実体: ${job.display(done.item.index)}`);
+  console.log(`索引: ${job.display(done.link)} -> ${job.linkTarget("qa", done.item.name)}`);
+  for (const task of waiting) {
+    const where = task.job === job.name ? "" : ` (案件: ${task.job})`;
+    console.log(`再開待ち: ${task.id} / ${task.name}${where} (raprid task move ${task.job} ${task.id} progress)`);
+  }
 }
 
 function move(argv: string[]): void {
@@ -146,10 +192,19 @@ function move(argv: string[]): void {
 }
 
 function resolve(argv: string[]): void {
-  const { positionals, values } = parse(argv, { "answered-by": { type: "string" } }, usage);
-  if (positionals.length !== 3) throw new UsageError(usage);
+  const { positionals, values } = parse(
+    argv,
+    { "answered-by": { type: "string" }, "answer-file": { type: "string" }, "if-match": { type: "string" }, json: { type: "boolean" } },
+    usage,
+  );
+  const file = values["answer-file"];
+  if (file !== undefined && positionals.length === 3) throw new UsageError("回答の位置引数と --answer-file は同時に指定できません");
+  if (positionals.length !== (file === undefined ? 3 : 2)) throw new UsageError(usage);
   const answeredBy = actor(values["answered-by"] ?? process.env.RAPRID_ACTOR, "--answered-by");
-  transition(positionals[0], positionals[1], "resolved", singleLine(positionals[2], "回答", true), answeredBy);
+  const ifMatch = parseIfMatch(values["if-match"]);
+  // 回答は変更前に検証する (空・上限超過・UTF-8 でないものは何も変えずに拒否)
+  const answer = file === undefined ? singleLine(positionals[2], "回答", true)! : readAnswer(file);
+  transition(positionals[0], positionals[1], "resolved", answer, answeredBy, { ifMatch, json: values.json, marked: file !== undefined });
 }
 
 export function run(argv: string[]): void {

@@ -5,17 +5,22 @@ import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { render } from "ink";
 import { currentProject, DelegateError } from "../delegate.js";
+import { actorPattern } from "./actions.js";
 import { App } from "./app.js";
 import { BackendError, ScriptBackend } from "./backend.js";
 import { DetailStore, SnapshotStore } from "./stores.js";
 
 export const usage = `使い方:
-  raprid tui [<案件名>]
+  raprid tui [<案件名>] [--actor human/<識別子>]
 
 管理リポジトリのタスク・QA・要確認を端末で閲覧する (GitUI 型の画面)。
 データは管理リポジトリの scripts/ (ui snapshot・show --json) から 2 秒ごとに取得する。
 query-v1 に対応した scripts/ が必要。端末 (TTY) でない場合は raprid task list / qa list (--json) を使う。
-キー操作は画面の下部と ? のヘルプに表示する。q または Ctrl+C で終了する。`;
+キー操作は画面の下部と ? のヘルプに表示する。q または Ctrl+C で終了する。
+
+scripts/ が guarded-write-v1 に対応していれば、a で QA に回答し、m でタスクの状態を変更できる。
+更新する人は --actor か最初の更新時の入力で human/<識別子> を指定する (ログイン名などから推測しない)。
+保存の前に確認画面を出し、他の変更と競合したときは保存せずに最新の内容を表示する。`;
 
 export interface TuiIo {
   stdin: NodeJS.ReadStream;
@@ -30,7 +35,7 @@ const defaultIo = (): TuiIo => ({ stdin: process.stdin, stdout: process.stdout, 
 export async function runTui(argv: string[], io: TuiIo = defaultIo()): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args: argv, allowPositionals: true, strict: true, options: { help: { type: "boolean", short: "h" } } });
+    parsed = parseArgs({ args: argv, allowPositionals: true, strict: true, options: { help: { type: "boolean", short: "h" }, actor: { type: "string" } } });
   } catch (error) {
     io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n${usage}\n`);
     return 2;
@@ -44,12 +49,18 @@ export async function runTui(argv: string[], io: TuiIo = defaultIo()): Promise<n
     return 2;
   }
   const job = parsed.positionals[0] ?? null;
+  const actor = parsed.values.actor ?? null;
+  if (actor !== null && !actorPattern.test(actor)) {
+    io.stderr.write(`--actor は human/<識別子> (英小文字・数字・. _ -) で指定してください: ${actor}\n`);
+    return 2;
+  }
   if (!io.stdin.isTTY || !io.stdout.isTTY || io.env.TERM === "dumb") {
     io.stderr.write("raprid tui は端末 (TTY) で実行してください。一覧は raprid task list / raprid qa list、機械的に読むときは --json を使ってください。\n");
     return 1;
   }
 
   let root: string;
+  let writable = false;
   try {
     root = currentProject(io.cwd).root;
   } catch (error) {
@@ -76,6 +87,7 @@ export async function runTui(argv: string[], io: TuiIo = defaultIo()): Promise<n
       );
       return 1;
     }
+    writable = capabilities.includes("guarded-write-v1");
     // 最初の取得は画面を開く前に行い、存在しない案件はエラーにする
     const first = await backend.snapshot();
     if (job !== null && !first.jobs.some((entry) => entry.name === job)) {
@@ -90,13 +102,16 @@ export async function runTui(argv: string[], io: TuiIo = defaultIo()): Promise<n
   }
 
   snapshots.start();
-  const instance = render(<App snapshots={snapshots} details={details} initialJob={job} projectName={basename(root)} onUnmount={stop} />, {
+  const instance = render(
+    <App snapshots={snapshots} details={details} initialJob={job} projectName={basename(root)} onUnmount={stop} writer={writable ? backend : undefined} actor={actor} />,
+    {
     stdin: io.stdin,
     stdout: io.stdout,
     stderr: io.stderr,
     alternateScreen: true,
-    exitOnCtrlC: false, // Ctrl+C は画面側で扱う (保存中の終了を遅らせるため)
-  });
+      exitOnCtrlC: false, // Ctrl+C は画面側で扱う (保存中の終了を遅らせるため)
+    },
+  );
   try {
     await instance.waitUntilExit();
     return 0;

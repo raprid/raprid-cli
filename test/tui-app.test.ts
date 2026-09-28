@@ -52,7 +52,7 @@ test("80〜119 桁では一覧と詳細を並べ、上部に件数、下部に�
   await tick(60);
   const frame = app.frame();
   const lines = frame.split("\n");
-  assert.match(lines[0], /^raprid tui  sample  案件: 全案件  未解決QA 1  更新 \d\d:\d\d:\d\d/);
+  assert.match(lines[0], /^raprid tui  sample  案件: 全案件  未解決QA 1  閲覧のみ  更新 \d\d:\d\d:\d\d/);
   assert.match(frame, /▶ \[1 task 3\]  2 QA 1   3 要確認 1/);
   assert.match(frame, /> T-001 progress 日本語と絵文字/);
   assert.match(frame, /T-002 pending  タスク T-002  待ち: qa\/Q-…║/, "待ち理由はパネルの幅で省略する");

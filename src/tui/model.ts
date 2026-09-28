@@ -1,5 +1,7 @@
 // TUI の画面状態とキー操作。Ink に依存しない純粋な関数にして、単体で試験する。
 
+import { handleFormKey, startAction } from "./actions.js";
+import type { EditorState } from "./editor.js";
 import type { DetailState } from "./stores.js";
 import { bodyOf, graphemes, type Line, markdownLines, sanitize } from "./text.js";
 import { type Issue, type ItemRecord, type Kind, type Snapshot, statusOrder } from "./types.js";
@@ -18,12 +20,77 @@ export function layoutFor(columns: number, rows: number): Layout {
   return "narrow";
 }
 
+// 更新の対象。revision は開いた時点のもので、保存時に --if-match として渡す
+export interface WriteTarget {
+  kind: Kind;
+  job: string;
+  id: string | null;
+  name: string;
+  path: string;
+  revision: string;
+  title: string;
+  status: string | null;
+  blockedBy: string[];
+}
+
+export type WriteRequest =
+  | { type: "answer"; target: WriteTarget; answer: string; actor: string }
+  | { type: "move"; target: WriteTarget; status: string; blockedBy: string | undefined; actor: string };
+
+export interface Blocker {
+  reference: string;
+  state: "resolved" | "unresolved" | "missing" | "other";
+}
+
+export interface WaitingTask {
+  job: string;
+  id: string | null;
+  name: string;
+  title: string;
+  path: string;
+}
+
+export interface AnswerForm {
+  kind: "answer";
+  target: WriteTarget;
+  editor: EditorState;
+  focus: "editor" | "save" | "cancel";
+  discard: "cancel" | "exit" | undefined; // 破棄の確認中 (exit は Ctrl+C から)
+  error: string | undefined;
+  latest: string[] | undefined; // 競合・失敗の後に読み直した最新の内容
+}
+
+export interface MoveForm {
+  kind: "move";
+  target: WriteTarget;
+  stage: "status" | "blocked" | "confirm";
+  index: number; // 遷移先 (statusOrder.task の位置)
+  blocked: string; // pending の待ち理由
+  checked: boolean; // done・QA 以外の待ちの解除を確認した
+  focus: "ok" | "back";
+  blockers: Blocker[];
+  error: string | undefined;
+  latest: string[] | undefined;
+}
+
 export type Mode =
   | { kind: "normal" }
   | { kind: "search"; draft: string; before: string }
   | { kind: "jobPicker"; index: number }
   | { kind: "filter"; index: number; draft: string[] }
-  | { kind: "help" };
+  | { kind: "help" }
+  | { kind: "actor"; draft: string; error: string | undefined; then: "answer" | "move" }
+  | AnswerForm
+  | { kind: "answerConfirm"; form: AnswerForm; focus: "ok" | "back" }
+  | MoveForm
+  | { kind: "saving"; request: WriteRequest; resume: AnswerForm | MoveForm; exitRequested: boolean }
+  | { kind: "resumeList"; qa: string; tasks: WaitingTask[]; index: number };
+
+const formModes = new Set(["actor", "answer", "answerConfirm", "move", "saving", "resumeList"]);
+
+export function inForm(state: UiState): boolean {
+  return formModes.has(state.mode.kind);
+}
 
 export interface Selection {
   key: string | null;
@@ -42,9 +109,11 @@ export interface UiState {
   narrowDetail: boolean; // 40〜79 桁で詳細を全面に出している
   mode: Mode;
   notice: string | undefined;
+  actor: string | null; // 更新する人 (human/<識別子>)。--actor か最初の更新時の入力で決め、セッション中だけ保つ
+  writable: boolean; // scripts/ が guarded-write-v1 に対応している
 }
 
-export function initialState(job: string | null = null): UiState {
+export function initialState(job: string | null = null, options: { actor?: string | null; writable?: boolean } = {}): UiState {
   const empty = { key: null, index: 0 };
   return {
     job,
@@ -58,6 +127,8 @@ export function initialState(job: string | null = null): UiState {
     narrowDetail: false,
     mode: { kind: "normal" },
     notice: undefined,
+    actor: options.actor ?? null,
+    writable: options.writable ?? false,
   };
 }
 
@@ -175,13 +246,15 @@ export interface KeyInput {
 
 export interface KeyContext {
   rows: Row[];
+  selected?: Row;
+  snapshot?: Snapshot;
   jobs: string[];
   layout: Layout;
   detailHeight: number; // 詳細の表示行数
   detailLength: number; // 詳細の総行数
 }
 
-export type Effect = "exit" | "refresh";
+export type Effect = "exit" | "refresh" | { kind: "write"; request: WriteRequest };
 
 export interface KeyResult {
   state: UiState;
@@ -212,9 +285,14 @@ function withoutLast(value: string): string {
 
 export function handleKey(state: UiState, input: string, key: KeyInput, context: KeyContext): KeyResult {
   const done = (next: UiState, ...effects: Effect[]): KeyResult => ({ state: next, effects });
+  // 保存中は終了を後回しにする。入力中の回答は Ctrl+C でも破棄の確認を出す
+  if (inForm(state)) {
+    if (context.layout === "tooSmall" && !(key.ctrl && input === "c") && state.mode.kind !== "saving") return done(state);
+    return handleFormKey(state, input, key, context);
+  }
   if (key.ctrl && input === "c") return done(state, "exit");
   // 小さすぎる端末では q だけを受け付け、状態は変えない
-  if (context.layout === "tooSmall") return state.mode.kind === "search" || input !== "q" ? done(state) : done(state, "exit");
+  if (context.layout === "tooSmall") return state.mode.kind === "normal" && input === "q" ? done(state, "exit") : done(state);
   const mode = state.mode;
   const rows = context.rows;
 
@@ -285,6 +363,8 @@ export function handleKey(state: UiState, input: string, key: KeyInput, context:
     return done({ ...state, showAll, notice: showAll ? "完了済みも表示します" : "完了済みを隠します" });
   }
   if (input === "r") return done({ ...state, notice: undefined }, "refresh");
+  if (input === "a") return startAction(state, context, "answer");
+  if (input === "m") return startAction(state, context, "move");
   if (input === "1" || input === "2" || input === "3") {
     const tab: Tab = input === "1" ? "task" : input === "2" ? "qa" : "issues";
     return done({ ...state, tab, focus: focus === "jobs" ? "jobs" : "list", narrowDetail: false, detailScroll: 0 });

@@ -1,14 +1,17 @@
-import { readdirSync, rmSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, singleLine } from "../lib/args.ts";
 import { actor } from "../lib/actor.ts";
 import { CliError, UsageError } from "../lib/errors.ts";
 import { Frontmatter, yamlScalar } from "../lib/frontmatter.ts";
 import { localDate, writeFileAtomic } from "../lib/fsutil.ts";
+import { assertRevision, parseIfMatch } from "../lib/guard.ts";
 import { assertNameFree, assertStatusDirs, createItem, moveItem } from "../lib/items.ts";
-import { Job, validateItemName } from "../lib/jobs.ts";
+import { Job, validateItemName, withJobLocks } from "../lib/jobs.ts";
 import { listCommand, showCommand } from "../lib/listing.ts";
 import { appendToSection, headings, splitLines } from "../lib/markdown.ts";
+import { findItem, ownIssues, printJson, recordJson, schemaVersion } from "../lib/query.ts";
+import { Collector } from "../lib/records.ts";
 import { projectRoot } from "../lib/root.ts";
 import { blockedByLines, renderTemplate } from "../lib/template.ts";
 import { displayUsage } from "../lib/view.ts";
@@ -18,11 +21,13 @@ export const usage = `使い方:
   raprid task list [<案件名>] [--status <状態,...> | --all] [--search <文字列>] [--long] [--json]
   raprid task show <案件名> <タスクIDまたは名前> [--json]
   raprid task ask <案件名> <タスクIDまたは名前> <QA名> <確認先> <質問内容> --requested-by <actor> --created-by <actor>
-  raprid task move <案件名> <タスクIDまたは名前> <状態> [blockedBy]
+  raprid task move <案件名> <タスクIDまたは名前> <状態> [blockedBy] [--if-match <revision>] [--json]
   raprid task note <案件名> <タスクIDまたは名前> <詳細名> [<見出し>]
 
 状態: add は todo | progress | pending、move は todo | pending | progress | done
-pending には blockedBy (qa/Q-001、task/T-001、other: <待っているもの>) が必要
+pending には blockedBy (qa/Q-001、qa/<案件名>/Q-001、task/T-001、other: <待っているもの>) が必要
+pending から離れるときは、待っているQA (別案件を含む) がすべて resolved であることを確かめる (task/other は確かめない)
+--if-match は show --json の revision。更新前に一致を確かめ、違えば REVISION_CONFLICT で何も変えない
 actor: human/<識別子> | agent/<識別子>
 
 list は既定で done 以外を表示する (--all で全件、--status todo,pending で状態を指定)。
@@ -132,32 +137,99 @@ function ask(argv: string[]): void {
   });
 }
 
+// blockedBy のうち QA を指すものの案件名 (qa/Q-001 は同じ案件、qa/<案件名>/Q-001 は別案件)
+function qaJobs(jobName: string, blockedBy: string[]): string[] {
+  return blockedBy
+    .map((reference) => reference.split("/"))
+    .filter((parts) => parts[0] === "qa" && (parts.length === 2 || parts.length === 3))
+    .map((parts) => (parts.length === 3 ? parts[1] : jobName));
+}
+
+// blockedBy を読む。読めない書式のときは、QA を指していそうなら止め、そうでなければ空として扱う (従来どおり置き換える)
+function blockersOf(fm: Frontmatter, source: string): string[] {
+  try {
+    return fm.getList("blockedBy") ?? [];
+  } catch (error) {
+    if (/qa\//.test(fm.get("blockedBy") ?? "")) {
+      throw new CliError(`blockedBy を読み取れないため、待っているQAを確認できません: ${source}`, 1, "BLOCKED_BY_UNREADABLE");
+    }
+    return [];
+  }
+}
+
+// pending から離れるとき、待っている QA がすべて解決済みか確かめる (ロック内で読み直す)
+function assertQaResolved(root: string, job: Job, blockedBy: string[]): void {
+  const collector = new Collector(root);
+  const problems: string[] = [];
+  for (const reference of blockedBy) {
+    const result = collector.resolveQa(job, reference);
+    if (result.state === "not-qa" || result.state === "resolved") continue;
+    const reason = { unresolved: "未解決", "invalid-status": "状態が不正", ambiguous: "特定できない (ID が重複)", "not-found": "見つからない" }[result.state];
+    problems.push(`${reference} (${reason})`);
+  }
+  if (problems.length > 0) {
+    throw new CliError(`待っているQAが解決していないため pending を解除できません: ${problems.join(", ")}\nQAを解決してから再度実行してください`, 1, "BLOCKED_BY_QA");
+  }
+}
+
 function move(argv: string[]): void {
-  const { positionals } = parse(argv, {}, usage);
+  const { positionals, values } = parse(argv, { "if-match": { type: "string" }, json: { type: "boolean" } }, usage);
   if (positionals.length < 3 || positionals.length > 4) throw new UsageError(usage);
   const [jobName, selector, status, rawBlockedBy] = positionals;
   if (!["todo", "pending", "progress", "done"].includes(status)) throw new UsageError(`状態はtodo、pending、progress、doneのいずれかです: ${status}`);
   const blockedBy = blockedByFor(status, rawBlockedBy, "変更");
-  const job = Job.existing(projectRoot(), jobName);
-  job.lock(() => {
-    const item = job.find("task", selector);
-    assertStatusDirs(job, "task");
-    const fm = item.frontmatter();
-    const old = fm.get("status") ?? "";
-    if (!["todo", "pending", "progress", "done"].includes(old)) throw new CliError(`実体のstatusが不正です: ${old || "未設定"}`);
-    for (const key of ["updatedAt", "completedAt", "blockedBy"]) {
-      if (!fm.has(key)) throw new CliError(`frontmatterに${key}がありません: ${job.display(item.index)}`);
+  const ifMatch = parseIfMatch(values["if-match"]);
+  const root = projectRoot();
+  const job = Job.existing(root, jobName);
+  // 待っている QA の案件も名前順にロックする。ロック内で依存が変わっていたら取り直す
+  let done: { item: ReturnType<Job["find"]>; link: string; old: string; id: string } | undefined;
+  for (let attempt = 0; attempt < 3 && !done; attempt++) {
+    let planned: string[] = [];
+    try {
+      const current = job.find("task", selector);
+      const fm = current.frontmatter();
+      if (fm.get("status") === "pending" && status !== "pending") planned = qaJobs(job.name, blockersOf(fm, job.display(current.index)));
+    } catch (error) {
+      if (!(error instanceof CliError)) throw error;
+      // 見つからない・読めない場合はロック内で同じ確認をして報告する
     }
-    const today = localDate();
-    fm.set("status", status);
-    fm.set("updatedAt", today);
-    fm.set("completedAt", status === "done" ? today : "");
-    fm.set("blockedBy", blockedBy ? [yamlScalar(blockedBy)] : []);
-    const link = moveItem(item, status, fm.toString());
-    console.log(`変更: ${fm.get("id")} / ${item.name} / ${old} -> ${status}`);
-    console.log(`実体: ${job.display(item.index)}`);
-    console.log(`索引: ${job.display(link)} -> ${job.linkTarget("task", item.name)}`);
-  });
+    const locked = new Set([job.name, ...planned.filter((name) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name))]);
+    done = withJobLocks(root, [...locked], () => {
+      const item = job.find("task", selector);
+      assertStatusDirs(job, "task");
+      const bytes = readFileSync(item.index);
+      assertRevision(ifMatch, bytes, job.display(item.index));
+      const fm = Frontmatter.parse(bytes.toString("utf8"), job.display(item.index));
+      const old = fm.get("status") ?? "";
+      if (!["todo", "pending", "progress", "done"].includes(old)) throw new CliError(`実体のstatusが不正です: ${old || "未設定"}`);
+      for (const key of ["updatedAt", "completedAt", "blockedBy"]) {
+        if (!fm.has(key)) throw new CliError(`frontmatterに${key}がありません: ${job.display(item.index)}`);
+      }
+      if (old === "pending" && status !== "pending") {
+        const blockers = blockersOf(fm, job.display(item.index));
+        if (!qaJobs(job.name, blockers).every((name) => locked.has(name))) return undefined; // 依存が変わった
+        assertQaResolved(root, job, blockers);
+      }
+      const today = localDate();
+      fm.set("status", status);
+      fm.set("updatedAt", today);
+      fm.set("completedAt", status === "done" ? today : "");
+      fm.set("blockedBy", blockedBy ? [yamlScalar(blockedBy)] : []);
+      const link = moveItem(item, status, fm.toString());
+      return { item, link, old, id: fm.get("id") ?? "" };
+    });
+  }
+  if (!done) throw new CliError("待っているQAの参照が変わり続けたため中止しました。再度実行してください", 1, "DEPENDENCY_CHANGED");
+  if (values.json) {
+    const collector = new Collector(root);
+    const data = collector.job(job);
+    const entry = findItem(data, "task", done.item.name);
+    printJson({ schemaVersion, ok: true, item: recordJson(entry.record), issues: ownIssues(data, entry) });
+    return;
+  }
+  console.log(`変更: ${done.id} / ${done.item.name} / ${done.old} -> ${status}`);
+  console.log(`実体: ${job.display(done.item.index)}`);
+  console.log(`索引: ${job.display(done.link)} -> ${job.linkTarget("task", done.item.name)}`);
 }
 
 function note(argv: string[]): void {

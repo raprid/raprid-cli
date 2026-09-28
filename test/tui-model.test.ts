@@ -93,8 +93,8 @@ test("キー操作: 移動・パネル・種類・詳細・戻る・終了", () 
   assert.deepEqual(press(state, "q").effects, ["exit"]);
   assert.deepEqual(press(state, "c", { ctrl: true }).effects, ["exit"]);
   assert.deepEqual(press(state, "r").effects, ["refresh"]);
-  assert.deepEqual(press(state, "a").state, state, "a と m は T-010 用に予約し、閲覧では何もしない");
-  assert.deepEqual(press(state, "m").state, state);
+  assert.match(press(state, "a").state.notice ?? "", /guarded-write-v1\) に対応していません/, "更新に対応しない scripts/ では a・m を使えない");
+  assert.equal(press(state, "m").state.mode.kind, "normal");
 });
 
 test("入力中は文字をショートカットとして扱わず、Esc で元に戻す", () => {
