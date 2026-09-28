@@ -274,7 +274,8 @@ frontmatter を正にしているのは、**リンクの位置では表現でき
 
 ```sh
 raprid job create acme-site                                   # 案件を作る
-raprid task add acme-site api-setup todo "API を用意する"      # T-001 を採番し、status/todo/ に索引を張る
+raprid job list                                               # 案件を名前順に一覧表示する
+raprid task add acme-site api-setup todo "API を用意する" --requested-by human/saiki --created-by agent/codex
 raprid task note acme-site T-001 investigation "既存 API の調査" # 01-investigation.md を作り index.md からリンク
 raprid task move acme-site T-001 progress                     # 着手する
 raprid task move acme-site T-001 pending qa/Q-001             # 待ちが発生した (blockedBy が必須)
@@ -282,6 +283,10 @@ raprid task move acme-site T-001 todo                         # 待ちが解け�
 raprid task move acme-site T-001 done                         # 完了する (completedAt を記入)
 raprid task list acme-site                                    # 一覧と不一致の報告
 ```
+
+`requestedBy`、`createdBy`、`answeredBy` の actor は `human/<識別子>` または
+`agent/<識別子>` で指定する。同じ actor を繰り返す自動処理では `RAPRID_ACTOR` も使えるが、
+人の依頼をAIが記録する場合のように両者が異なるときは各オプションを明示する。
 
 追加コマンドは既存案件だけを対象とし、実体と状態索引を同時に作る。タスクの初期状態は
 `todo`、`progress`、`pending`で、`pending`では5番目の`blockedBy`が必須。
@@ -305,6 +310,8 @@ status: progress                              # todo | pending | progress | done
 createdAt: 2026-01-15                         # 作成日
 updatedAt: 2026-01-15                         # 最終更新日
 completedAt:                                  # done にした日 (未完了なら空)
+requestedBy: human/saiki                      # タスクを必要とした依頼元
+createdBy: agent/codex                        # この記録を作った actor
 blockedBy:                                    # 先に片付かないと進めないもの
   - qa/Q-001                                  # qa/Q-001 または task/T-001
 test:                                         # 対応する手動テストの手順書
@@ -323,7 +330,7 @@ test:                                         # 対応する手動テストの�
 `other:` が続くようなら、それは QA として起票した方がよい合図。
 待っているものが複数あるときは、**進行を妨げている主なものだけ**を書き、
 全体は本文に書く (ここは索引であって議論の場ではない)。
-依存関係の意味や状態への連動は拡張していない (`blockedBy` は記録と索引)。
+一覧は `qa/Q-001` の参照先が無い場合や、解決済みQAを待ったままの場合を「要確認」として報告する。
 
 **`status: pending` のタスクは `blockedBy` が空であってはならない。**
 逆に `blockedBy` が埋まっていても、着手できるなら `todo` のままでよい
@@ -344,11 +351,25 @@ test:                                         # 対応する手動テストの�
 特定案件に属さないものは `jobs/other/qa/` に置く。`status` は索引のディレクトリ名なので QA 名に使えない。
 
 ```sh
-raprid qa add acme-site deployment-policy customer "本番反映の手順はこれでよいか"
-raprid qa resolve acme-site Q-001 "確認環境から実行する"   # 回答欄の先頭に追記し resolved にする
+raprid qa add acme-site deployment-policy customer "本番反映の手順はこれでよいか" --requested-by agent/codex --created-by agent/codex
+raprid qa resolve acme-site Q-001 "確認環境から実行する" --answered-by human/saiki
 raprid qa move acme-site Q-001 unresolved                 # 再オープンする (回答は残す)
 raprid qa list acme-site
 ```
+
+### AIから人への質問
+
+実行中のタスクで人の判断が必要になったら、独立した5番目のタスク状態は作らず、次を一体で行う。
+
+```sh
+raprid task ask acme-site T-001 deployment-policy customer "本番反映の手順はこれでよいか" \
+  --requested-by agent/codex --created-by agent/codex
+```
+
+このコマンドはQAを `unresolved` で作り、元タスクを `pending`、`blockedBy: [qa/Q-001]` にする。
+途中で失敗した場合はQAもタスク変更も残さない。人の回答は `qa resolve --answered-by human/<識別子>` で記録する。
+解決時に再開待ちのタスクが表示されるため、回答を作業へ反映するときに
+`raprid task move <案件> <タスクID> progress`（または `todo`）を明示的に実行する。
 
 ### QA の index.md
 
@@ -363,6 +384,9 @@ updatedAt: 2026-01-15                         # 最終更新日
 resolvedAt:                                   # 解決した日 (未解決なら空)
 job: acme-site                                # 親の jobs/<案件名>/ と一致させる
 askTo: customer                               # customer | internal | undecided
+requestedBy: agent/codex                      # 質問を必要とした actor
+createdBy: agent/codex                        # QA記録を作った actor
+answeredBy:                                   # 現在の回答をした actor
 blockedBy: []                                 # 先に決まらないと判断できないもの
 ---
 ```

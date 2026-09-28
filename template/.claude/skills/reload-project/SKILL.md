@@ -55,10 +55,10 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 * **ドキュメント**: official / unofficial / personal は分類・案件ごとに数え、
   `docs/feature/` は現行・archived別に `.feature` を数える。xlsx 等の更新内容は案件の README を索引として読む。
   ディレクトリ数とファイル数を混同せず、数える対象を明記する。全画像を読む必要はない。
-* **タスク**: `tasks/<名前>/index.md` の frontmatter `id`と`status`を読み、案件内の固定IDを添えて分類する。progress は
+* **タスク**: `tasks/<名前>/index.md` の frontmatter `id`と`status`、`requestedBy`、`createdBy`を読み、案件内の固定IDを添えて分類する。progress は
   `index.md` の「内容」「完了条件」「結果」を読み、必要なら「詳細」から最新の詳細 md を読む。todo は名前、done は件数でよい。
   pending は `blockedBy` を添える。索引の無い実体も含め、索引との不一致は報告する。
-* **QA**: 各 `jobs/<案件名>/qa/<名前>/index.md` のfrontmatter `id`と`status`を読み、`status: unresolved`を未解決として扱う。
+* **QA**: 各 `jobs/<案件名>/qa/<名前>/index.md` のfrontmatter `id`と`status`、`requestedBy`、`createdBy`、`answeredBy`を読み、`status: unresolved`を未解決として扱う。
   「質問内容」を要約し、確認先・依存関係を添える。回答欄の空白やリンク位置で判定しない。
   frontmatter の `job` と親ディレクトリが一致するかも確認する。案件外は `jobs/other/qa/` に置く。
 * **submodule**: `repos/<名前>/repo/` の現在ブランチ・HEAD・作業ツリー、

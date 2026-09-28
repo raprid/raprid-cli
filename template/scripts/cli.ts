@@ -9,8 +9,8 @@ import { scriptsInfo } from "./lib/root.ts";
 const usage = `使い方: raprid <group> <command> [...]  (pnpm raprid <group> <command> [...] でも同じ)
 
 group:
-  job   案件の作成 (create)・旧構成からの移行 (migrate)
-  task  タスクの追加 (add)・一覧 (list)・状態変更 (move)・詳細の追加 (note)
+  job   案件の作成 (create)・一覧 (list)・旧構成からの移行 (migrate)
+  task  タスクの追加 (add)・一覧 (list)・質問 (ask)・状態変更 (move)・詳細の追加 (note)
   qa    QA の追加 (add)・一覧 (list)・解決 (resolve)・状態変更 (move)
   log   agent のセッションログの作成 (create)
   repo  submodule の追加 (add)・worktree の展開 (setup-worktrees)

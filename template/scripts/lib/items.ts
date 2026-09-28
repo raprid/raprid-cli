@@ -90,7 +90,7 @@ export function moveItem(item: Item, newStatus: string, updated: string): string
 }
 
 // 一覧: frontmatter の status を正として状態ごとに並べ、ID と索引の不一致を報告する
-export function listItems(job: Job, kind: Kind, describe: (item: Item) => string): string[] {
+export function listItems(job: Job, kind: Kind, describe: (item: Item) => string, inspect?: (item: Item) => string[]): string[] {
   const out: string[] = [];
   const items = job.items(kind);
   const statuses = kind === "task" ? ["progress", "todo", "pending", "done"] : ["unresolved", "resolved"];
@@ -153,6 +153,7 @@ export function listItems(job: Job, kind: Kind, describe: (item: Item) => string
     } catch (error) {
       issues.push(error instanceof Error ? error.message : String(error));
     }
+    if (inspect) issues.push(...inspect(item));
   }
   for (const status of job.statuses(kind)) {
     const dir = job.statusDir(kind, status);

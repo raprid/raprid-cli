@@ -21,7 +21,7 @@ raprid --version
 特定の版を入れる場合は、版ごとの tarball を指定する。
 
 ```sh
-npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.2.1/raprid-0.2.1.tgz
+npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.3.0/raprid-0.3.0.tgz
 ```
 
 `npm install -g github:raprid/raprid-cli` は使わない。git 依存のインストールでは npm が `-g` を
@@ -31,7 +31,7 @@ npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.2.1/rap
 ```sh
 pnpm install
 npm pack                          # prepack でビルドし raprid-<version>.tgz を作る (private のため npm publish はできない)
-npm install -g ./raprid-0.2.1.tgz
+npm install -g ./raprid-0.3.0.tgz
 ```
 
 ## 使い方
@@ -53,10 +53,12 @@ raprid init my-project --no-git   # git init しない
 
 ```sh
 raprid job create PROJ-123
-raprid task add PROJ-123 api-setup todo "API を用意する"
+raprid job list
+raprid task add PROJ-123 api-setup todo "API を用意する" --requested-by human/saiki --created-by agent/codex
 raprid task move PROJ-123 T-001 progress
+raprid task ask PROJ-123 T-001 deploy-policy customer "本番反映の手順はこれでよいか" --requested-by agent/codex --created-by agent/codex
 raprid task note PROJ-123 T-001 investigation "既存 API の調査"
-raprid qa add PROJ-123 deploy-policy customer "本番反映の手順はこれでよいか"
+raprid qa resolve PROJ-123 Q-001 "この方針で進める" --answered-by human/saiki
 raprid log create claude
 raprid repo add git@github.com:example/foo.git 77
 ```
@@ -188,7 +190,7 @@ npm pack はシンボリックリンクや `.gitignore` をそのまま同梱で
 ```sh
 npm pack --dry-run                                    # 同梱一覧 (dist/ と package.json など)
 prefix="$(mktemp -d)"
-npm install -g --prefix "$prefix" ./raprid-0.2.1.tgz
+npm install -g --prefix "$prefix" ./raprid-0.3.0.tgz
 "$prefix/bin/raprid" init "$(mktemp -d)/sample"
 ```
 
@@ -200,8 +202,8 @@ npm install -g --prefix "$prefix" ./raprid-0.2.1.tgz
 ```sh
 pnpm test
 npm pack
-cp raprid-0.2.1.tgz raprid.tgz
-gh release create v0.2.1 raprid.tgz raprid-0.2.1.tgz --title v0.2.1 --notes "雛形: project_template <コミット>"
+cp raprid-0.3.0.tgz raprid.tgz
+gh release create v0.3.0 raprid.tgz raprid-0.3.0.tgz --title v0.3.0 --notes "雛形: project_template <コミット>"
 ```
 
 ## ライセンス

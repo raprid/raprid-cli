@@ -21,6 +21,9 @@ Claude Code と Codex のどちらでも本体が実行でき、サブエージ�
   `other: <待ちの内容>` を記入する。会話に理由があればそのまま使う。
 - 通常は todo → progress → done、todo/progress → pending、pending → todo/progress。
   差し戻し・再開・完了の直接指定も、理由が明確なら指定に従う。
+- 人への質問で待ちになる場合は、QAを別操作で作ってから移すのではなく
+  `raprid task ask <案件> <タスク> <QA名> <確認先> <質問> --requested-by <actor> --created-by <actor>` を使う。
+  QAの作成と `pending` 化が一体で失敗または成功する。
 
 ## 2. 書き換える前に索引を確認する
 
@@ -64,6 +67,7 @@ raprid task move <案件名> <タスクIDまたは名前> <変更後状態> [blo
 - frontmatter と索引が一致する。
 - リンクは一つだけで、正しい相対パスを指し、実体を読める。
 - pending に理由がある。done の完了日、再開時の空欄が正しい。
+- QA回答後は `qa resolve --answered-by <actor>` の再開待ち表示を確認し、回答を作業へ反映するときに todo または progress へ明示的に戻す。
 - 変更対象以外を変更していない。
 
 対象、変更前 → 変更後、理由、変更したパス、検証結果を報告する。

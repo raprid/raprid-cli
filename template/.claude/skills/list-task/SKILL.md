@@ -22,7 +22,7 @@ description: jobs/ 配下のタスクを progress / todo / pending / done 別に
 find jobs -path '*/tasks/*/index.md' -not -path 'jobs/.*' | sort
 ```
 
-- 各実体の先頭の `---` に挟まれた YAML を読み、`id` / `status` / `blockedBy` / 日付を取得する。
+- 各実体の先頭の `---` に挟まれた YAML を読み、`id` / `status` / `blockedBy` / `requestedBy` / `createdBy` / 日付を取得する。
   本文のサンプル YAML は対象にしない。詳細 md (`01-*.md` など) は集計しない。
 - `blockedBy: [qa/Q-001]` と複数行のリストをどちらも読む。
   `other: <待っているもの>` の形式も有効。1 種類の書式だけを拾う awk で空と判定しない。
@@ -42,6 +42,7 @@ find jobs -path '*/tasks/*/index.md' -not -path 'jobs/.*' | sort
 - 実体に対応するリンクが無い、または複数の状態ディレクトリにある。
 - リンク先が `../../tasks/<同名>` ではない、リンク切れ、索引にリンク以外が置かれている、実体の無い索引。
 - リンクの置き場所と実体の `status` が一致しない。
+- `blockedBy` のQAが存在しない、またはQAが `resolved` なのにタスクが `pending` のまま。
 
 リンクの無い実体も一覧に含める。状態不明は勝手に todo とせず別に示す。
 壊れたリンクは `test -e` だけでは拾えないので `test -L` / `readlink` も使う。

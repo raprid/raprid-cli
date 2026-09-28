@@ -33,6 +33,17 @@ test("案件を雛形から作り、同名や不正な名前は拒否する", ()
   assert.deepEqual(readdirSync(join(root, "jobs")).filter((name) => !name.startsWith(".")), ["PROJ-1"]);
 });
 
+test("案件一覧を名前順に表示し、空の一覧と引数誤りを区別する", () => {
+  ok(["job", "create", "AAA"]);
+  let result = ok(["job", "list"]);
+  assert.equal(result.stdout, "案件 (2)\n  AAA\n  PROJ-1\n合計: 2\n");
+  assert.equal(raprid(root, ["job", "list", "extra"]).status, 2);
+  rmSync(join(root, "jobs", "AAA"), { recursive: true });
+  rmSync(join(root, "jobs", "PROJ-1"), { recursive: true });
+  result = ok(["job", "list"]);
+  assert.equal(result.stdout, "案件 (0)\n合計: 0\n");
+});
+
 test("タスクを追加すると固定IDの実体と状態索引を作る", () => {
   const result = ok(["task", "add", "PROJ-1", "api-setup", "todo", "API を用意する"]);
   assert.match(result.stdout, /作成: T-001 \/ jobs\/PROJ-1\/tasks\/api-setup\/index\.md/);
@@ -91,7 +102,7 @@ test("状態変更は日付・依存関係・索引を一緒に更新し、未�
 
   ok(["task", "move", "PROJ-1", "api-setup", "done"]);
   text = read(root, path);
-  assert.match(text, new RegExp(`status: done\\ncreatedAt: .*\\nupdatedAt: ${today()}\\ncompletedAt: ${today()}\\nblockedBy: \\[\\]\\n`));
+  assert.match(text, new RegExp(`status: done\\ncreatedAt: .*\\nupdatedAt: ${today()}\\ncompletedAt: ${today()}\\nrequestedBy: agent/test\\ncreatedBy: agent/test\\nblockedBy: \\[\\]\\n`));
   assert.match(text, /test:\n  - docs\/feature\/admin\/\nowner: someone # 担当\n# コメント行\n---\n/);
   assert.ok(text.endsWith("## 結果\n\n```md\n## 詳細\nstatus: todo\n```\n"));
 
@@ -149,11 +160,12 @@ test("詳細を追加すると連番の md を作り、index の「## 詳細」�
 });
 
 test("一覧は frontmatter を正として並べ、索引の不一致を報告する", () => {
+  ok(["qa", "add", "PROJ-1", "dependency", "internal", "Bを開始してよいか"]);
   ok(["task", "add", "PROJ-1", "a", "todo", "A を作る"]);
   ok(["task", "add", "PROJ-1", "b", "pending", "B を待つ", "qa/Q-001"]);
   ok(["job", "create", "other"]);
   let result = ok(["task", "list", "PROJ-1"]);
-  assert.match(result.stdout, /PROJ-1 \(jobs\/PROJ-1\/\)\n  progress \(0\)\n  todo \(1\)\n    T-001 +a +A を作る\n  pending \(1\)\n    T-002 +b +B を待つ \(待ち: qa\/Q-001\)\n  done \(0\)\n  合計: 2$/m);
+  assert.match(result.stdout, /PROJ-1 \(jobs\/PROJ-1\/\)\n  progress \(0\)\n  todo \(1\)\n    T-001 +a +A を作る \[依頼: agent\/test \/ 記録: agent\/test\]\n  pending \(1\)\n    T-002 +b +B を待つ \(待ち: qa\/Q-001\) \[依頼: agent\/test \/ 記録: agent\/test\]\n  done \(0\)\n  合計: 2$/m);
   assert.doesNotMatch(result.stdout, /要確認/);
   result = ok(["task", "list"]);
   assert.match(result.stdout, /^other \(jobs\/other\/\)/m);
@@ -170,13 +182,14 @@ test("一覧は frontmatter を正として並べ、索引の不一致を報告�
 test("QA の追加・解決・再オープン", () => {
   ok(["qa", "add", "PROJ-1", "deploy-policy", "customer", "本番反映の手順はこれでよいか"]);
   const path = "jobs/PROJ-1/qa/deploy-policy/index.md";
-  assert.match(read(root, path), /^---\nid: Q-001\nstatus: unresolved\n[\s\S]*job: PROJ-1\naskTo: customer\nblockedBy: \[\]\n---\n\n# Q&A\n\n## 質問内容\n\n本番反映の手順はこれでよいか\n\n## 回答内容\n$/);
+  assert.match(read(root, path), /^---\nid: Q-001\nstatus: unresolved\n[\s\S]*job: PROJ-1\naskTo: customer\nrequestedBy: agent\/test\ncreatedBy: agent\/test\nansweredBy:\nblockedBy: \[\]\n---\n\n# Q&A\n\n## 質問内容\n\n本番反映の手順はこれでよいか\n\n## 回答内容\n$/);
   assert.equal(readlinkSync(join(root, "jobs/PROJ-1/qa/status/unresolved/deploy-policy")), "../../deploy-policy");
   write(root, path, `${read(root, path)}\n未回答\n\n検討メモ\n`);
 
   ok(["qa", "resolve", "PROJ-1", "Q-001", "確認環境から実行する"]);
   let text = read(root, path);
   assert.match(text, new RegExp(`status: resolved\\n[\\s\\S]*resolvedAt: ${today()}\\n`));
+  assert.match(text, /answeredBy: agent\/test\n/);
   assert.ok(text.endsWith("## 回答内容\n\n確認環境から実行する\n\n検討メモ\n"), text);
   assert.ok(lstatSync(join(root, "jobs/PROJ-1/qa/status/resolved/deploy-policy")).isSymbolicLink());
 
@@ -192,7 +205,36 @@ test("QA の追加・解決・再オープン", () => {
   assert.equal(raprid(root, ["qa", "move", "PROJ-1", "Q-001", "unresolved", "余計な回答"]).status, 2);
   ok(["qa", "add", "PROJ-1", "second", "internal", "二つ目"]);
   const result = ok(["qa", "list", "PROJ-1"]);
-  assert.match(result.stdout, /unresolved \(2\)\n    Q-001 +deploy-policy +本番反映の手順はこれでよいか \(customer\)\n    Q-002 +second +二つ目 \(internal\)/);
+  assert.match(result.stdout, /unresolved \(2\)\n    Q-001 +deploy-policy +本番反映の手順はこれでよいか \(customer\) \[依頼: agent\/test \/ 記録: agent\/test\]\n    Q-002 +second +二つ目 \(internal\) \[依頼: agent\/test \/ 記録: agent\/test\]/);
+});
+
+test("AIの質問をQA作成とpending化として一体で記録し、人の回答後に明示的に再開する", () => {
+  ok(["task", "add", "PROJ-1", "implementation", "progress", "実装する", "--requested-by", "human/saiki", "--created-by", "agent/codex"]);
+  const asked = ok([
+    "task", "ask", "PROJ-1", "T-001", "choose-policy", "internal", "方式Aでよいか",
+    "--requested-by", "agent/codex", "--created-by", "agent/codex",
+  ]);
+  assert.match(asked.stdout, /作成: Q-001/);
+  assert.match(asked.stdout, /変更: T-001 \/ implementation \/ progress -> pending \(待ち: qa\/Q-001\)/);
+  assert.match(read(root, "jobs/PROJ-1/tasks/implementation/index.md"), /status: pending[\s\S]*requestedBy: human\/saiki\ncreatedBy: agent\/codex[\s\S]*blockedBy:\n  - qa\/Q-001/);
+  assert.match(read(root, "jobs/PROJ-1/qa/choose-policy/index.md"), /requestedBy: agent\/codex\ncreatedBy: agent\/codex\nansweredBy:/);
+
+  const resolved = ok(["qa", "resolve", "PROJ-1", "Q-001", "方式Aで進める", "--answered-by", "human/saiki"]);
+  assert.match(resolved.stdout, /再開待ち: T-001 \/ implementation/);
+  assert.match(read(root, "jobs/PROJ-1/qa/choose-policy/index.md"), /answeredBy: human\/saiki/);
+  assert.match(ok(["task", "list", "PROJ-1"]).stdout, /解決済みQAを待機中: implementation \(qa\/Q-001\)/);
+  ok(["task", "move", "PROJ-1", "T-001", "progress"]);
+  assert.doesNotMatch(ok(["task", "list", "PROJ-1"]).stdout, /要確認/);
+
+  const before = snapshot(root, (rel) => rel === "jobs/.locks");
+  assert.equal(raprid(root, ["task", "ask", "PROJ-1", "T-999", "orphan", "internal", "質問", "--requested-by", "agent/codex", "--created-by", "agent/codex"]).status, 1);
+  assert.deepEqual(snapshot(root, (rel) => rel === "jobs/.locks"), before);
+});
+
+test("新規記録のactorはオプションまたはRAPRID_ACTORで必須になる", () => {
+  const result = raprid(root, ["task", "add", "PROJ-1", "missing-actor", "todo", "actorなし"], { env: { RAPRID_ACTOR: "" } });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--requested-byはhuman/);
 });
 
 test("入口の使い方と終了コード", () => {
@@ -255,6 +297,7 @@ test("pending で blockedBy が空のタスクを要確認として報告する"
   symlinkSync("../../tasks/a", join(root, "jobs/PROJ-1/status/pending/a"));
   const result = ok(["task", "list", "PROJ-1"]);
   assert.match(result.stdout, /要確認:\n    pending なのに blockedBy が空: a/);
+  ok(["qa", "add", "PROJ-1", "dependency", "internal", "開始してよいか"]);
   ok(["task", "move", "PROJ-1", "T-001", "pending", "qa/Q-001"]);
   assert.doesNotMatch(ok(["task", "list", "PROJ-1"]).stdout, /要確認/);
 });

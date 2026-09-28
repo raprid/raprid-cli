@@ -41,7 +41,7 @@ test("子ディレクトリや特殊文字を含むパスからでも管理リ�
     const nested = join(root, "docs", "unofficial");
     mkdirSync(nested, { recursive: true });
     assert.equal(raprid(nested, ["job", "create", "PROJ-1"]).status, 0, name);
-    const add = raprid(nested, ["task", "add", "PROJ-1", "first", "todo", "$(echo 展開しない) `x` 'y'"]);
+    const add = raprid(nested, ["task", "add", "PROJ-1", "first", "todo", "$(echo 展開しない) `x` 'y'", "--requested-by", "human/test", "--created-by", "agent/test"]);
     assert.equal(add.status, 0, `${name}: ${add.stderr}`);
     assert.match(readFileSync(join(root, "jobs/PROJ-1/tasks/first/index.md"), "utf8"), /\$\(echo 展開しない\) `x` 'y'/);
     const viaCli = raprid(nested, ["task", "list", "PROJ-1"]);

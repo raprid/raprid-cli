@@ -6,6 +6,9 @@ updatedAt: {{date}}
 resolvedAt:
 job: {{job}}
 askTo: {{askTo}}
+requestedBy: {{requestedBy}}
+createdBy: {{createdBy}}
+answeredBy:
 {{blockedBy}}
 ---
 

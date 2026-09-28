@@ -219,7 +219,8 @@ test("生成先でログ作成とタスク管理の初期操作ができる", ()
   assert.match(log.stdout, /logs\/\d{4}\/\d{2}\/\d{2}\/claude\/first/);
 
   assert.equal(raprid(work, "job", "create", "sample").status, 0);
-  const add = raprid(work, "task", "add", "sample", "first-task", "todo", "最初のタスク");
+  assert.equal(raprid(work, "job", "list").stdout, "案件 (2)\n  other\n  sample\n合計: 2\n");
+  const add = raprid(work, "task", "add", "sample", "first-task", "todo", "最初のタスク", "--requested-by", "human/test", "--created-by", "agent/test");
   assert.equal(add.status, 0, add.stderr);
   assert.ok(lstatSync(join(work, "jobs", "sample", "status", "todo", "first-task")).isSymbolicLink());
   const move = raprid(work, "task", "move", "sample", "T-001", "progress");
@@ -228,4 +229,11 @@ test("生成先でログ作成とタスク管理の初期操作ができる", ()
   assert.equal(note.status, 0, note.stderr);
   const list = raprid(work, "task", "list", "sample");
   assert.match(list.stdout, /progress \(1\)\n    T-001 +first-task +最初のタスク/);
+
+  const ask = raprid(work, "task", "ask", "sample", "T-001", "policy", "internal", "方式を確認する", "--requested-by", "agent/test", "--created-by", "agent/test");
+  assert.equal(ask.status, 0, ask.stderr);
+  assert.match(ask.stdout, /Q-001[\s\S]*progress -> pending/);
+  const resolve = raprid(work, "qa", "resolve", "sample", "Q-001", "進めてよい", "--answered-by", "human/test");
+  assert.equal(resolve.status, 0, resolve.stderr);
+  assert.match(resolve.stdout, /再開待ち: T-001/);
 });

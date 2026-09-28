@@ -14,7 +14,7 @@ export interface Result {
 
 export function raprid(root: string, args: string[], options: { script?: string; env?: NodeJS.ProcessEnv; require?: string } = {}): Result {
   const script = options.script ?? cli;
-  const env = { ...process.env, ...(options.script ? {} : { RAPRID_ROOT: root }), ...options.env };
+  const env = { ...process.env, RAPRID_ACTOR: "agent/test", ...(options.script ? {} : { RAPRID_ROOT: root }), ...options.env };
   if (options.script) delete env.RAPRID_ROOT;
   const result = spawnSync(process.execPath, [...(options.require ? ["--require", options.require] : []), script, ...args], {
     cwd: root,
@@ -26,7 +26,7 @@ export function raprid(root: string, args: string[], options: { script?: string;
 
 export function rapridAsync(root: string, args: string[]): Promise<Result> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [cli, ...args], { cwd: root, env: { ...process.env, RAPRID_ROOT: root } });
+    const child = spawn(process.execPath, [cli, ...args], { cwd: root, env: { ...process.env, RAPRID_ROOT: root, RAPRID_ACTOR: "agent/test" } });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (data) => (stdout += data));

@@ -21,6 +21,7 @@ Codex の入口は [AGENTS.md](AGENTS.md)。共通ルールは README.md とこ�
 | agent のセッションログを作る | `raprid log create <agent名>` (`pnpm log:create <agent名>` も同じ) |
 | 個別の作業記録を作る | セッション内の `_.md` を複製 ([logs/README.md](logs/README.md)) |
 | 案件を始める | `raprid job create <案件名>` |
+| 案件の一覧を見る | `raprid job list` |
 | タスクを作る | `/add-task` または `raprid task add` |
 | タスクのフェーズ・調査の記録を作る | `raprid task note <案件名> <ID> <詳細名>` |
 | タスクの状態を変える | `/task-transition` または `raprid task move` |
@@ -30,6 +31,7 @@ Codex の入口は [AGENTS.md](AGENTS.md)。共通ルールは README.md とこ�
 | テストの手順書を置く | `docs/feature/<領域>/<機能>/` ([docs/feature/README.md](docs/feature/README.md)) |
 | QA の状況を見る | `/list-qa` または `raprid qa list [<案件名>]` |
 | QA を作る | `raprid qa add` |
+| タスクから人へ質問する | `raprid task ask` (QA作成と `pending` 化を一体で行う) |
 | QA を解決にする・再オープンする | `raprid qa resolve` / `raprid qa move <案件名> <ID> unresolved` |
 | ドキュメントを置く | `docs/{official,unofficial,personal}/<案件名>/` ([docs/README.md](docs/README.md)) |
 | リリース資料の変更箇所を作る | `/build-release-diff-sheet` (MR の差分を撮って貼る) |
@@ -68,7 +70,8 @@ submodule のローカル動作確認は `repos/<名前>/repo/`、作業ブラ�
 食い違ったときは frontmatter が正で、リンクの張り替え漏れとして扱う。
 
 frontmatter は固定ID (`T-001` / `Q-001`)、日付 (`createdAt` / `updatedAt` / `completedAt` / `resolvedAt`)、
-依存関係 (`blockedBy`)、QA なら関連案件 (`job`) と確認先 (`askTo`) を持つ。
+依存関係 (`blockedBy`)、依頼元・記録者 (`requestedBy` / `createdBy`)、QA なら関連案件 (`job`)・確認先 (`askTo`)・
+回答者 (`answeredBy`) を持つ。actor は `human/<識別子>` または `agent/<識別子>` で記録する。
 項目の意味と書き方は [README.md](README.md) に従う。
 QA は `jobs/<案件名>/qa/` に置き、特定案件に属さないものは `jobs/other/qa/` に置く。
 タスクの `index.md` は要約とし、フェーズや調査ごとの計画・実施内容・判断は同じディレクトリの詳細 md に書く。

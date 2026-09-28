@@ -4,6 +4,8 @@ status: {{status}}
 createdAt: {{date}}
 updatedAt: {{date}}
 completedAt:
+requestedBy: {{requestedBy}}
+createdBy: {{createdBy}}
 {{blockedBy}}
 test: []
 ---

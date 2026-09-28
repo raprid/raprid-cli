@@ -85,12 +85,15 @@ raprid job create <案件名>
 タスク名は**作業内容が分かる英小文字とハイフン** (`confirm-button-removal-survey` など)。
 
 ```sh
-raprid task add <案件名> <タスク名> <状態> "<タイトル>" [blockedBy]
+raprid task add <案件名> <タスク名> <状態> "<タイトル>" [blockedBy] \
+  --requested-by <human/識別子|agent/識別子> --created-by <human/識別子|agent/識別子>
 ```
 
 このコマンドは既存 ID を検査して次の `T-001` 形式の ID を採番し、`tasks/<タスク名>/index.md` と
 状態索引 `status/<状態>/<タスク名> -> ../../tasks/<タスク名>` をまとめて作る。
 同名のタスクや索引があれば何も作らずに失敗する (終了コード 1、引数の誤りは 2)。
+`requestedBy` はタスクを必要とした依頼元、`createdBy` は記録を作った actor。
+人の依頼を agent が登録する場合は、たとえば `--requested-by human/saiki --created-by agent/codex` と分ける。
 
 作成された `index.md` の「内容」「完了条件」を会話の材料で埋める。
 雛形の節構成 (タイトル / 内容 / 完了条件 / 詳細 / 結果) は変えない。
@@ -173,9 +176,8 @@ raprid log create codex # Claude Code では claude (pnpm log:create も同じ)
 判明した事実を、根拠となる `パス:行番号` とセットで書く。
 表が使える場面 (影響範囲の一覧など) では表にすると後から追いやすい。
 
-仕様判断が必要な論点が出てきたら、`結果` の「次にやること」に列挙し、
-**QA として起票するかを確認する** (`raprid qa add <案件名> <QA名> <確認先> "<質問>"`。詳細は README.md)。
-このスキルでは QA を勝手に作らない — 起票の粒度は人が決めた方がよい。
+実行中に人の回答が必要になったら、質問を記録すること自体が依頼の遂行に必要なので、
+`raprid task ask` で QA の起票と元タスクの `pending` 化を一体で行う。質問の発案者と記録者も actor で明記する。
 
 ## 出力フォーマット
 

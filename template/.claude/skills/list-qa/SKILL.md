@@ -15,10 +15,10 @@ QA の状態は `jobs/<案件名>/qa/<名前>/index.md` の frontmatter `status`
 - 直接読む場合は `jobs/*/qa/<名前>/index.md` を列挙する (`qa/status/` は索引なので除く)。索引に無い実体も対象。
 - キーワードがあればファイル名・質問内容で絞る。案件名や確認先の指定があれば
   親ディレクトリと frontmatter の `job` / `askTo` を使う。案件外は `other` とする。
-- 先頭の YAML frontmatter から `id`、`status`、`job`、`askTo`、`blockedBy` を読む。
+- 先頭の YAML frontmatter から `id`、`status`、`job`、`askTo`、`blockedBy`、`requestedBy`、`createdBy`、`answeredBy` を読む。
   依存関係はインライン配列と複数行配列のどちらも扱う。
 - frontmatter の `job` が親の `jobs/<案件名>/` と違う場合は不整合として報告する。
-- 質問は「## 質問内容」から要約する。解決済みの表示では「## 回答内容」も添える。
+- 質問は「## 質問内容」から要約する。依頼元・記録者を表示し、解決済みの表示では「## 回答内容」と回答者も添える。
   空欄を推測で埋めない。
 - 一覧には案件内で固定の`Q-001`形式のIDを表示する。日常操作ではファイル名よりIDを優先する。
 - 表示順は unresolved → resolved。既定では resolved は件数のみ、
