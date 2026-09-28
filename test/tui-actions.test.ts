@@ -197,7 +197,9 @@ test("状態変更: pending には待ち理由が要り、pending の解除は Q
   const pendingState = onTask("T-002");
   result = typeAll(pendingState, "m", { return: true }); // pending のまま待ち理由を見直す
   const prefilled = result.state.mode as import("../src/tui/model.js").MoveForm;
-  assert.deepEqual(prefilled.blocked.lines, ["qa/PROJ-1/Q-001", "other: 承認"]);
+  assert.deepEqual(prefilled.blocked, { lines: ["qa/PROJ-1/Q-001", "other: 承認", ""], row: 2, col: 0 }, "既存の理由の下の空行から入力する");
+  const appended = typeAll(result.state, "task/T-009").state.mode as import("../src/tui/model.js").MoveForm;
+  assert.deepEqual(actions.blockedList(appended), ["qa/PROJ-1/Q-001", "other: 承認", "task/T-009"], "追加した理由が既存の理由に連結しない");
   result = typeAll(result.state, { tab: true }, { return: true }, { return: true });
   assert.deepEqual((result.effects.at(-1) as { request: { blockedBy: string[] } }).request.blockedBy, ["qa/PROJ-1/Q-001", "other: 承認"]);
 

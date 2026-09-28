@@ -293,3 +293,36 @@ test("複数行の回答と貼り付けを保存し、別の CLI の回答と競
   const second = JSON.parse(run("qa", "show", "PROJ-1", "Q-002", "--json").stdout).item;
   assert.deepEqual([second.answer, second.answeredBy], ["CLI の回答", "human/cli"], "先に保存した回答を上書きしない");
 });
+
+test("複数の待ち理由を持つ pending に、既存の理由を保ったまま 1 件追加する", { skip }, () => {
+  const root = join(work, "blocked");
+  assert.equal(spawnSync(process.execPath, [cli, "init", root], { encoding: "utf8" }).status, 0);
+  const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: root, env, encoding: "utf8" });
+  assert.equal(run("job", "create", "PROJ-1").status, 0);
+  assert.equal(run("qa", "add", "PROJ-1", "first", "internal", "一つ目").status, 0);
+  assert.equal(run("task", "add", "PROJ-1", "a", "pending", "複数待ち", "--blocked-by", "qa/Q-001", "--blocked-by", "other: 部長, 課長").status, 0);
+  const result = pty(
+    ["tui", "--actor", "human/tester"],
+    [
+      { expect: "> T-001", timeout: 10 },
+      { send: "m", after: 0.3 },
+      { send: "\r", after: 0.3 },
+      { expect: "2 件" },
+      { send: "\u001b[200~task/T-009\u001b[201~", after: 0.3 },
+      { expect: "3 件" },
+      { send: "\t", after: 0.2 },
+      { send: "\r", after: 0.3 },
+      { expect: "この内容で状態を変更しますか" },
+      { send: "\r", after: 0.3 },
+      { expect: "を pending にしました", timeout: 8 },
+      { send: "q" },
+    ],
+    { cwd: root },
+  );
+  allFound(result);
+  assert.equal(result.exitCode, 0);
+  assertRestored(result);
+  assert.deepEqual(JSON.parse(run("task", "show", "PROJ-1", "T-001", "--json").stdout).item.blockedBy, ["qa/Q-001", "other: 部長, 課長", "task/T-009"]);
+  assert.deepEqual(JSON.parse(run("task", "list", "PROJ-1", "--json").stdout).issues, []);
+});

@@ -215,8 +215,9 @@ export function blockedList(form: MoveForm): string[] {
   return [...new Set(editorText(form.blocked).split("\n").map((line) => line.trim()).filter((line) => line !== ""))];
 }
 
+// 既存の待ち理由の下に空行を置き、カーソルをそこへ置く (続けて入力・貼り付けしても既存の理由に連結しない)
 function editorFrom(lines: string[]): EditorState {
-  return { lines: [...lines], row: lines.length - 1, col: graphemes(lines.at(-1) ?? "").length };
+  return { lines: [...lines, ""], row: lines.length, col: 0 };
 }
 
 // done への変更と、QA 以外の待ちの解除は、利用者が確認したことを明示してもらう
