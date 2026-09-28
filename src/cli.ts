@@ -9,6 +9,7 @@ import { init, InitError, loadBundle } from "./init.js";
 const usage = `使い方:
   raprid init [<dir>] [--no-git] [--dry-run]
   raprid <group> <command> [...]
+  raprid tui [<案件名>]
   raprid --version
   raprid --help
 
@@ -20,6 +21,7 @@ const usage = `使い方:
   ui     TUI 用のデータ取得 (snapshot)
   log    agent のセッションログの作成 (create)
   repo   submodule の追加 (add)・worktree の展開 (setup-worktrees)
+  tui    タスク・QA・要確認を端末で閲覧する (raprid tui --help)
 
 init 以外は、カレントディレクトリから上へ管理リポジトリ (scripts/cli.ts) を探して処理を委譲する。
 各 group の使い方は、管理リポジトリの中で raprid <group> --help を実行して表示する。
@@ -132,4 +134,11 @@ function main(argv: string[]): number {
   }
 }
 
-process.exitCode = main(process.argv.slice(2));
+const argv = process.argv.slice(2);
+if (argv[0] === "tui") {
+  // Ink / React は TUI のときだけ読み込む
+  const { runTui } = await import("./tui/main.js");
+  process.exitCode = await runTui(argv.slice(1));
+} else {
+  process.exitCode = main(argv);
+}

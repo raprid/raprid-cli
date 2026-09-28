@@ -1,0 +1,197 @@
+// 疑似端末 (PTY) で raprid tui を動かし、キー操作・端末サイズの変更・シグナル・異常終了の後に
+// 端末が元に戻る (代替画面を出る・カーソルを出す・canonical/echo に戻る) ことを確かめる。
+
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { after, before, test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const cli = join(repoRoot, "dist", "cli.js");
+const harness = join(repoRoot, "test", "pty-harness.py");
+const python = spawnSync("python3", ["-c", "import pty, termios"], { encoding: "utf8" }).status === 0;
+const skip = !python || !["darwin", "linux"].includes(process.platform) ? "python3 の pty が使えない環境" : false;
+
+let work: string;
+let project: string;
+
+type Step = { expect: string; timeout?: number } | { send: string; after?: number } | { wait: number } | { resize: [number, number]; after?: number } | { signal: string; after?: number };
+
+interface Result {
+  exitCode: number | null;
+  timedOut: boolean;
+  output: string;
+  expects: { expect: string; found: boolean; at: number }[];
+  termios: { icanon: boolean; echo: boolean } | null;
+}
+
+function pty(args: string[], steps: Step[], options: { cwd?: string; cols?: number; rows?: number; env?: Record<string, string> } = {}): Result {
+  const spec = {
+    argv: [process.execPath, cli, ...args],
+    cwd: options.cwd ?? project,
+    env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", TERM: "xterm-256color", LANG: "ja_JP.UTF-8", ...options.env },
+    cols: options.cols ?? 100,
+    rows: options.rows ?? 24,
+    steps,
+    timeout: 15,
+  };
+  const file = join(work, `spec-${Math.random().toString(36).slice(2)}.json`);
+  writeFileSync(file, JSON.stringify(spec));
+  const run = spawnSync("python3", [harness, file], { encoding: "utf8", timeout: 60_000 });
+  assert.equal(run.status, 0, run.stderr);
+  return JSON.parse(run.stdout) as Result;
+}
+
+function assertRestored(result: Result): void {
+  assert.equal(result.timedOut, false, "終了する");
+  assert.deepEqual(result.termios, { icanon: true, echo: true }, "canonical と echo に戻る");
+  const entered = result.output.lastIndexOf("\u001b[?1049h");
+  assert.ok(entered >= 0, "代替画面に入る");
+  const rest = result.output.slice(entered);
+  assert.ok(rest.includes("\u001b[?1049l"), "代替画面から出る");
+  assert.ok(rest.includes("\u001b[?25h"), "カーソルを表示に戻す");
+}
+
+function allFound(result: Result): void {
+  for (const expect of result.expects) assert.ok(expect.found, `画面に「${expect.expect}」が出る\n${result.output.slice(-2000)}`);
+}
+
+before(() => {
+  work = mkdtempSync(join(tmpdir(), "raprid-tui-pty-"));
+  project = join(work, "p");
+  assert.equal(spawnSync(process.execPath, [cli, "init", project], { encoding: "utf8" }).status, 0);
+  const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
+  const run = (...args: string[]) => assert.equal(spawnSync(process.execPath, [cli, ...args], { cwd: project, env, encoding: "utf8" }).status, 0, args.join(" "));
+  run("job", "create", "PROJ-1");
+  run("task", "add", "PROJ-1", "first", "todo", "最初のタスク");
+  run("task", "add", "PROJ-1", "second", "todo", "二番目のタスク👨‍👩‍👧");
+  run("qa", "add", "PROJ-1", "question", "customer", "確認したいこと");
+});
+
+after(() => {
+  rmSync(work, { recursive: true, force: true });
+});
+
+test("q で終了すると端末が元に戻る", { skip }, () => {
+  const result = pty(["tui"], [{ expect: "> T-001" , timeout: 10 }, { send: "\u001b[B", after: 0.3 }, { expect: "> T-002" }, { send: "q" }]);
+  allFound(result);
+  assert.equal(result.exitCode, 0);
+  assertRestored(result);
+});
+
+test("Ctrl+C でも終了し、端末が元に戻る", { skip }, () => {
+  const result = pty(["tui", "PROJ-1"], [{ expect: "案件: PROJ-1", timeout: 10 }, { send: "\u0003" }]);
+  allFound(result);
+  assert.equal(result.exitCode, 0);
+  assertRestored(result);
+});
+
+test("端末を小さくすると案内を出し、広げると選択を保ったまま戻る", { skip }, () => {
+  const result = pty(
+    ["tui"],
+    [
+      { expect: "> T-001", timeout: 10 },
+      { send: "\u001b[B", after: 0.3 },
+      { expect: "> T-002" },
+      { resize: [30, 10], after: 0.5 },
+      { expect: "端末が小さすぎます" },
+      { expect: "(30x10)" },
+      { send: "\u001b[A", after: 0.2 }, // 小さい間の操作は無視する
+      { resize: [130, 24], after: 0.5 },
+      { expect: "> T-002" },
+      { expect: "案件" },
+      { send: "q" },
+    ],
+  );
+  allFound(result);
+  assert.equal(result.exitCode, 0);
+  assertRestored(result);
+});
+
+function fakeProject(name: string, body: string): string {
+  const root = join(work, name);
+  mkdirSync(join(root, "scripts"), { recursive: true });
+  mkdirSync(join(root, "jobs"), { recursive: true });
+  mkdirSync(join(root, ".git"));
+  writeFileSync(join(root, "scripts", "package.json"), JSON.stringify({ type: "module", raprid: { format: 1, protocol: 1 } }));
+  writeFileSync(join(root, "scripts", "cli.ts"), body);
+  return root;
+}
+
+const emptySnapshot = { schemaVersion: 1, generatedAt: "2026-09-28T00:00:00.000Z", scope: { job: null }, jobs: [{ name: "PROJ-1", path: "jobs/PROJ-1", title: null, counts: { task: { total: 0, byStatus: {} }, qa: { total: 0, byStatus: {} } } }], tasks: [], qas: [], issues: [] };
+
+test("SIGTERM で終了すると、取得中の子プロセスを止めて端末を戻す", { skip }, () => {
+  const pidFile = join(work, "hung.pid");
+  const marker = join(work, "first-done");
+  const root = fakeProject(
+    "hang",
+    `import { existsSync, writeFileSync } from "node:fs";
+const args = process.argv.slice(2);
+if (args[0] === "--capabilities") console.log(JSON.stringify({ schemaVersion: 1, capabilities: ["query-v1"] }));
+else if (args[0] === "ui" && !existsSync(${JSON.stringify(marker)})) { writeFileSync(${JSON.stringify(marker)}, ""); console.log(${JSON.stringify(JSON.stringify(emptySnapshot))}); }
+else if (args[0] === "ui") { writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 60_000); }
+`,
+  );
+  const result = pty(["tui"], [{ expect: "該当する項目がありません", timeout: 10 }, { wait: 3 }, { signal: "TERM", after: 1 }], { cwd: root });
+  allFound(result);
+  assert.equal(result.exitCode, 143, "SIGTERM で終了する");
+  assertRestored(result);
+  assert.ok(existsSync(pidFile), "2 秒後の取得が実行中だった");
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  assert.throws(() => process.kill(pid, 0), "取得中の子プロセスが残らない");
+});
+
+test("描画中の例外で異常終了しても端末を戻す", { skip }, () => {
+  const broken = { ...emptySnapshot, tasks: [{ job: "PROJ-1", kind: "task", id: "T-001", name: "x", path: "jobs/PROJ-1/tasks/x/index.md", title: "壊れた応答", status: "pending", blockedBy: null }] };
+  const root = fakeProject(
+    "broken",
+    `const args = process.argv.slice(2);
+if (args[0] === "--capabilities") console.log(JSON.stringify({ schemaVersion: 1, capabilities: ["query-v1"] }));
+else if (args[0] === "ui") console.log(${JSON.stringify(JSON.stringify(broken))});
+else { console.log(JSON.stringify({ schemaVersion: 1, error: { code: "NOT_FOUND", message: "無い" } })); process.exitCode = 1; }
+`,
+  );
+  const result = pty(["tui"], [{ expect: "異常終了しました", timeout: 10 }], { cwd: root });
+  allFound(result);
+  assert.equal(result.exitCode, 1);
+  assertRestored(result);
+});
+
+test("端末でない・TERM=dumb・非対応の scripts/・存在しない案件は画面を開かずに終了する", { skip }, () => {
+  const piped = spawnSync(process.execPath, [cli, "tui"], { cwd: project, encoding: "utf8" });
+  assert.equal(piped.status, 1);
+  assert.match(piped.stderr, /端末 \(TTY\) で実行してください。一覧は raprid task list/);
+  const help = spawnSync(process.execPath, [cli, "tui", "--help"], { cwd: project, encoding: "utf8" });
+  assert.equal(help.status, 0, "--help は端末でなくても使える");
+  assert.match(help.stdout, /raprid tui \[<案件名>\]/);
+  assert.equal(spawnSync(process.execPath, [cli, "tui", "a", "b"], { cwd: project, encoding: "utf8" }).status, 2);
+
+  const dumb = pty(["tui"], [{ expect: "端末 (TTY) で実行してください", timeout: 10 }], { env: { TERM: "dumb" } });
+  allFound(dumb);
+  assert.equal(dumb.exitCode, 1);
+  assert.doesNotMatch(dumb.output, /\u001b\[\?1049h/, "画面を開かない");
+
+  const legacy = fakeProject("legacy", `console.error("不明な group"); process.exitCode = 2;\n`);
+  const unsupported = pty(["tui"], [{ expect: "query-v1 が必要", timeout: 10 }], { cwd: legacy });
+  allFound(unsupported);
+  assert.equal(unsupported.exitCode, 1);
+  assert.match(unsupported.output, /自動で更新しません/);
+  assert.ok(!existsSync(join(legacy, "jobs", "PROJ-1")), "init・移行・展開をしない");
+
+  const missing = pty(["tui", "NOPE"], [{ expect: "案件が見つかりません: jobs/NOPE", timeout: 10 }]);
+  allFound(missing);
+  assert.equal(missing.exitCode, 1);
+
+  const outside = mkdtempSync(join(tmpdir(), "raprid-tui-none-"));
+  try {
+    mkdirSync(join(outside, ".git"));
+    const none = pty(["tui"], [{ expect: "管理リポジトリが見つかりません", timeout: 10 }], { cwd: outside });
+    allFound(none);
+    assert.equal(none.exitCode, 1);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+});

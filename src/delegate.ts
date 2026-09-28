@@ -76,7 +76,7 @@ function run(script: string, argv: string[], env: NodeJS.ProcessEnv): number {
   return 1;
 }
 
-function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+export function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env = { ...process.env, ...extra };
   if (!("RAPRID_ROOT" in extra)) delete env.RAPRID_ROOT;
   return env;
@@ -100,32 +100,15 @@ function extractScripts(bundle: TemplateBundle): string {
   return dir;
 }
 
-export function delegate(argv: string[], loadBundle: () => TemplateBundle, cwd = process.cwd()): number {
-  const migrating = argv[0] === "job" && argv[1] === "migrate";
-  const project = findProject(cwd);
-  if (!project) {
-    throw new DelegateError(
-      "管理リポジトリが見つかりません (scripts/package.json と scripts/cli.ts のあるディレクトリを、Git リポジトリの境界まで探しました)。\n" +
-        "新しく作る場合は raprid init を使ってください。",
-    );
-  }
+function notFound(): DelegateError {
+  return new DelegateError(
+    "管理リポジトリが見つかりません (scripts/package.json と scripts/cli.ts のあるディレクトリを、Git リポジトリの境界まで探しました)。\n" +
+      "新しく作る場合は raprid init を使ってください。",
+  );
+}
 
-  if (project.kind === "legacy") {
-    if (!migrating) {
-      throw new DelegateError(
-        `旧構成 (job/) のプロジェクトです: ${project.root}\n` +
-          "raprid job migrate --dry-run で移行計画を確認し、raprid job migrate --apply で新構成へ移してください。",
-      );
-    }
-    // 旧プロジェクトには委譲先が無いので、同梱の移行処理を一時展開して対象ルートを指定する
-    const dir = extractScripts(loadBundle());
-    try {
-      return run(join(dir, "scripts", "cli.ts"), argv, childEnv({ RAPRID_ROOT: project.root }));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }
-
+// 委譲できる現行構成のプロジェクトかを確かめる (版の互換性と旧構成の残り)
+export function assertDelegatable(project: Extract<Project, { kind: "current" }>, migrating = false): void {
   const min = Math.min(...supportedProtocols);
   const max = Math.max(...supportedProtocols);
   if (!Number.isInteger(project.protocol) || (project.protocol >= min && project.protocol <= max && !supportedProtocols.includes(project.protocol))) {
@@ -149,6 +132,41 @@ export function delegate(argv: string[], loadBundle: () => TemplateBundle, cwd =
       `旧構成の job/ が残っています: ${project.root}\n` + "raprid job migrate --dry-run で移行計画を確認してください。",
     );
   }
+}
+
+// raprid tui など、委譲先の scripts/ を直接使う入口のためのルート判定
+export function currentProject(cwd = process.cwd()): Extract<Project, { kind: "current" }> {
+  const project = findProject(cwd);
+  if (!project) throw notFound();
+  if (project.kind === "legacy") {
+    throw new DelegateError(`旧構成 (job/) のプロジェクトです: ${project.root}\nraprid job migrate --dry-run で移行計画を確認してください。`);
+  }
+  assertDelegatable(project);
+  return project;
+}
+
+export function delegate(argv: string[], loadBundle: () => TemplateBundle, cwd = process.cwd()): number {
+  const migrating = argv[0] === "job" && argv[1] === "migrate";
+  const project = findProject(cwd);
+  if (!project) throw notFound();
+
+  if (project.kind === "legacy") {
+    if (!migrating) {
+      throw new DelegateError(
+        `旧構成 (job/) のプロジェクトです: ${project.root}\n` +
+          "raprid job migrate --dry-run で移行計画を確認し、raprid job migrate --apply で新構成へ移してください。",
+      );
+    }
+    // 旧プロジェクトには委譲先が無いので、同梱の移行処理を一時展開して対象ルートを指定する
+    const dir = extractScripts(loadBundle());
+    try {
+      return run(join(dir, "scripts", "cli.ts"), argv, childEnv({ RAPRID_ROOT: project.root }));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  assertDelegatable(project, migrating);
   // scripts/ がシンボリックリンクでも、判定したルートを操作先にする
   return run(join(project.root, "scripts", "cli.ts"), argv, childEnv({ RAPRID_ROOT: project.root }));
 }

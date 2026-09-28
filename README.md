@@ -21,7 +21,7 @@ raprid --version
 特定の版を入れる場合は、版ごとの tarball を指定する。
 
 ```sh
-npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.3.0/raprid-0.3.0.tgz
+npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.4.0/raprid-0.4.0.tgz
 ```
 
 `npm install -g github:raprid/raprid-cli` は使わない。git 依存のインストールでは npm が `-g` を
@@ -31,7 +31,7 @@ npm install -g https://github.com/raprid/raprid-cli/releases/download/v0.3.0/rap
 ```sh
 pnpm install
 npm pack                          # prepack でビルドし raprid-<version>.tgz を作る (private のため npm publish はできない)
-npm install -g ./raprid-0.3.0.tgz
+npm install -g ./raprid-0.4.0.tgz
 ```
 
 ## 使い方
@@ -75,6 +75,36 @@ CLI を入れていない環境では `pnpm raprid <group> <command>` か `node 
 * **版の互換性**: この CLI が対応する委譲プロトコルは `1`。プロジェクトの `protocol` が新しければ CLI の更新を、
   古ければプロジェクトの `scripts/` の更新を案内して終了する (終了コード 1)。
 * **引数・入出力**: 引数はシェルを通さずにそのまま渡し、標準入出力と終了コードも引き継ぐ。
+
+### 端末で閲覧する (raprid tui)
+
+```sh
+raprid tui              # 全案件
+raprid tui PROJ-123     # 案件を指定して開く (g で切り替えられる)
+```
+
+タスク・QA・要確認 (不整合) を [GitUI](https://github.com/gitui-org/gitui) のようなキーボード中心の画面で閲覧する。
+データは管理リポジトリの `scripts/` に `ui snapshot --json` (2 秒ごと) と `task/qa show --json` を
+非同期の子プロセスで問い合わせて取得し、プロジェクトのコードは直接読み込まない。
+
+* 画面の幅が 120 桁以上なら案件・一覧・詳細の 3 列、80〜119 桁なら一覧と詳細、40〜79 桁なら一覧だけ
+  (Enter で詳細、Esc で戻る)。40 桁未満か 12 行未満では広げるよう案内し、選択や入力は保つ
+* 主なキー: ↑↓ 移動、Tab / Shift+Tab パネル、1/2/3 task・QA・要確認、/ 検索、g 案件、f 状態の絞り込み、
+  v 完了済みも表示、r 再取得、PageUp/PageDown 詳細のページ送り、? ヘルプ、q / Ctrl+C 終了。
+  検索の入力中は文字をショートカットとして扱わない
+* done / resolved は既定で隠す。選択は案件・種類・ID で追跡し、消えた場合は近くの項目へ移して知らせる
+* 取得に失敗しても前回の表示を保ち「更新失敗」を出す。15 秒を超えた取得は止めて自動取得を停止し、r で再開する
+* 代替画面・raw mode・カーソルは Ink が管理し、正常終了・Ctrl+C・SIGTERM・描画中の例外のいずれでも端末を戻す。
+  実行中の取得用の子プロセスも止める
+* 閲覧専用。QA の回答やタスクの状態変更は `raprid qa resolve` / `raprid task move` で行う
+
+必要なもの: 端末 (TTY。パイプや `TERM=dumb` では起動せず、`raprid task list` / `qa list` の `--json` を案内する) と、
+`query-v1` に対応した管理リポジトリの `scripts/` (`node scripts/cli.ts --capabilities` で確認できる)。
+古い `scripts/` のプロジェクトでは更新が必要な旨を表示して終了し、init・移行・雛形の展開は勝手に行わない。
+CLI を更新しただけでは既存プロジェクトの `scripts/` は変わらないので、project_template の `scripts/` を取り込む。
+
+画面は [Ink](https://github.com/vadimdemedes/ink) 7 / React 19 で作り、`raprid tui` のときだけ読み込む
+(通常のサブコマンドの起動には影響しない)。依存は `npm install -g` で一緒に導入される。
 
 ### 旧構成のプロジェクトを移行する
 
@@ -152,6 +182,7 @@ CLI を更新しても、サブコマンドの処理は各プロジェクトの 
 ```text
 .
 ├── src/                      # CLI 本体 (cli.ts / init.ts / delegate.ts / bundle.ts)
+│   └── tui/                  # raprid tui (backend・stores: 取得、model: 状態とキー操作、app.tsx: Ink の画面)
 ├── scripts/
 │   ├── sync-template.ts      # project_template から template/ を作り直す
 │   └── bundle-template.ts    # template/ を dist/template.json にまとめる (build の一部)
@@ -159,7 +190,7 @@ CLI を更新しても、サブコマンドの処理は各プロジェクトの 
 ├── template-source.json      # template/ の取り込み元リポジトリ・ref・コミット
 ├── template-links.json       # 雛形のシンボリックリンク (template/ には置かない)
 ├── overrides/                # 雛形を初期状態にするための差し替えファイル
-└── test/                     # node:test の結合テスト
+└── test/                     # node:test の結合テスト (tui-*.test.ts は画面、pty-harness.py は疑似端末)
 ```
 
 ```sh
@@ -167,6 +198,10 @@ pnpm install
 pnpm typecheck
 pnpm test                     # build してから dist/cli.js を一時ディレクトリで実行する
 ```
+
+`test/tui-pty.test.ts` は `python3` の `pty` で疑似端末を作り、キー操作・端末サイズの変更・SIGTERM・
+描画中の例外の後に端末が元に戻ることを確かめる (python3 が無い環境では飛ばす)。
+実端末での日本語入力・貼り付けなどは自動試験の対象外なので、`docs/feature` の手順で人が確認する。
 
 ### 雛形を更新する
 
@@ -193,7 +228,7 @@ npm pack はシンボリックリンクや `.gitignore` をそのまま同梱で
 ```sh
 npm pack --dry-run                                    # 同梱一覧 (dist/ と package.json など)
 prefix="$(mktemp -d)"
-npm install -g --prefix "$prefix" ./raprid-0.3.0.tgz
+npm install -g --prefix "$prefix" ./raprid-0.4.0.tgz
 "$prefix/bin/raprid" init "$(mktemp -d)/sample"
 ```
 
@@ -205,8 +240,8 @@ npm install -g --prefix "$prefix" ./raprid-0.3.0.tgz
 ```sh
 pnpm test
 npm pack
-cp raprid-0.3.0.tgz raprid.tgz
-gh release create v0.3.0 raprid.tgz raprid-0.3.0.tgz --title v0.3.0 --notes "雛形: project_template <コミット>"
+cp raprid-0.4.0.tgz raprid.tgz
+gh release create v0.4.0 raprid.tgz raprid-0.4.0.tgz --title v0.4.0 --notes "雛形: project_template <コミット>"
 ```
 
 ## ライセンス
