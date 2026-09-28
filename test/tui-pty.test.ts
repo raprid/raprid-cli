@@ -18,7 +18,13 @@ const skip = !python || !["darwin", "linux"].includes(process.platform) ? "pytho
 let work: string;
 let project: string;
 
-type Step = { expect: string; timeout?: number } | { send: string; after?: number } | { wait: number } | { resize: [number, number]; after?: number } | { signal: string; after?: number };
+type Step =
+  | { expect: string; timeout?: number }
+  | { send: string; after?: number }
+  | { wait: number }
+  | { resize: [number, number]; after?: number }
+  | { signal: string; after?: number }
+  | { run: string[]; env?: Record<string, string>; after?: number };
 
 interface Result {
   exitCode: number | null;
@@ -77,6 +83,22 @@ after(() => {
 
 test("q で終了すると端末が元に戻る", { skip }, () => {
   const result = pty(["tui"], [{ expect: "> T-001" , timeout: 10 }, { send: "\u001b[B", after: 0.3 }, { expect: "> T-002" }, { send: "q" }]);
+  allFound(result);
+  assert.equal(result.exitCode, 0);
+  assertRestored(result);
+});
+
+test("別の CLI で追加したタスクが 2 秒ごとの再取得で現れる", { skip }, () => {
+  const result = pty(
+    ["tui", "PROJ-1"],
+    [
+      { expect: "> T-001", timeout: 10 },
+      { run: [process.execPath, cli, "task", "add", "PROJ-1", "later", "todo", "あとから追加したタスク"], env: { RAPRID_ACTOR: "agent/test" } },
+      { expect: "あとから追加したタスク", timeout: 6 },
+      { expect: "[1 task 3]" },
+      { send: "q" },
+    ],
+  );
   allFound(result);
   assert.equal(result.exitCode, 0);
   assertRestored(result);

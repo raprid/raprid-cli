@@ -6,7 +6,7 @@
 #
 # spec: {"argv": [...], "cwd": "...", "env": {...}, "cols": 100, "rows": 30, "timeout": 20,
 #        "steps": [{"expect": "文字列", "timeout": 5} | {"send": "q"} | {"wait": 0.5}
-#                  | {"resize": [cols, rows]} | {"signal": "TERM"}]}
+#                  | {"resize": [cols, rows]} | {"signal": "TERM"} | {"run": [...], "env": {...}}]}
 # 結果 (stdout の JSON): 終了状態、出力 (UTF-8)、各 expect の成否、終了後の端末設定 (icanon・echo)
 #
 # コマンドは sh で包み、終了後も sh がセッションを保っている間に端末設定を読む
@@ -90,6 +90,9 @@ def main():
             expects.append({"expect": needle, "found": found, "at": round(time.monotonic() - started, 3)})
         elif "send" in step:
             os.write(master, step["send"].encode("utf-8"))
+            pump(step.get("after", 0.05))
+        elif "run" in step:
+            subprocess.run(step["run"], cwd=spec["cwd"], env={**spec["env"], **step.get("env", {})}, capture_output=True)
             pump(step.get("after", 0.05))
         elif "wait" in step:
             pump(step["wait"])
