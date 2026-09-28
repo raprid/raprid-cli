@@ -54,6 +54,9 @@ raprid init my-project --no-git   # git init しない
 ```sh
 raprid job create PROJ-123
 raprid job list
+raprid task list PROJ-123 --status todo,progress   # 既定は done 以外。--all で全件
+raprid task show PROJ-123 T-001
+raprid qa list --json                             # 機械向けの JSON (schemaVersion 1)
 raprid task add PROJ-123 api-setup todo "API を用意する" --requested-by human/saiki --created-by agent/codex
 raprid task move PROJ-123 T-001 progress
 raprid task ask PROJ-123 T-001 deploy-policy customer "本番反映の手順はこれでよいか" --requested-by agent/codex --created-by agent/codex

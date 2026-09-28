@@ -8,7 +8,3 @@ export function actor(value: string | undefined, option: string): string {
   }
   return value;
 }
-
-export function actorLabel(value: string): string {
-  return value || "legacy/unknown";
-}

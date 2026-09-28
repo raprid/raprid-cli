@@ -145,9 +145,10 @@ Node.js 24 が `.ts` を直接実行するのでビルドは不要。処理の�
 scripts/
 ├── cli.ts              # サブコマンドの共通入口
 ├── package.json        # 管理形式の識別情報 (raprid.format / raprid.protocol) と "type": "module"
-├── commands/           # job・task・qa・log・repo・migrate
-├── lib/                # frontmatter・索引・ロック・Markdown の共通処理
+├── commands/           # job・task・qa・ui・log・repo・migrate
+├── lib/                # frontmatter・索引・ロック・Markdown・一覧の収集/診断/表示の共通処理
 ├── templates/          # 案件・タスク・詳細・QA・セッションログ・repos 管理文書の雛形 (唯一の複製元)
+├── vendor/             # 同梱した依存 (表示幅の計算。pnpm vendor:build で再生成する生成物)
 └── test/               # node:test (pnpm test)
 ```
 
@@ -164,13 +165,17 @@ node scripts/cli.ts task list PROJ-123 # pnpm も無い環境
 | `raprid job create <案件名>` | `scripts/templates/job/` から `jobs/<案件名>/` を作る。既存の案件は上書きしない |
 | `raprid job migrate [--dry-run \| --apply \| --restore <ID>]` | 旧構成 (`job/`) からの移行。「[旧構成からの移行](#旧構成からの移行)」を参照 |
 | `raprid task add <案件名> <タスク名> <状態> <タイトル> [blockedBy]` | タスクを追加する (固定 ID を採番し、実体と状態索引を作る) |
-| `raprid task list [<案件名>]` | 状態別の一覧。ID の重複・索引の不一致も報告する |
+| `raprid job list [--search <文字列>] [--json]` | 案件を名前順に一覧表示する |
+| `raprid task list [<案件名>] [--status <状態,...> \| --all] [--search <文字列>] [--long] [--json]` | 状態別の一覧 (既定は done 以外)。ID の重複・索引の不一致も「要確認」に報告する |
+| `raprid task show <案件名> <ID\|名前> [--json]` | 1 件の詳細 (actor・日付・依存・本文・診断) |
 | `raprid task move <案件名> <ID\|名前> <状態> [blockedBy]` | 状態・日付・依存関係と状態索引を一緒に更新する |
 | `raprid task note <案件名> <ID\|名前> <詳細名> [<見出し>]` | 詳細 md を連番で作り、`index.md` の「## 詳細」からリンクする |
 | `raprid qa add <案件名> <QA名> <確認先> <質問内容> [blockedBy]` | QA を追加する |
-| `raprid qa list [<案件名>]` | 未解決・解決済みの一覧 |
+| `raprid qa list [<案件名>] [--status <状態,...> \| --all] [--search <文字列>] [--long] [--json]` | QA の一覧 (既定は unresolved) |
+| `raprid qa show <案件名> <ID\|名前> [--json]` | 1 件の詳細 (質問・回答・確認先・回答者) |
 | `raprid qa resolve <案件名> <ID\|名前> <回答>` | 回答を記入して resolved にする |
 | `raprid qa move <案件名> <ID\|名前> unresolved` | 再オープンする (回答は残す) |
+| `raprid ui snapshot [<案件名>] --json` | TUI (`raprid tui`) 用に案件・タスク・QA・診断を全状態で一括取得する |
 | `raprid log create <agent名> [--date] [--session]` | セッションログを作る (`pnpm log:create` も同じ) |
 | `raprid repo add <URL> [--dir-name <名前>] <権限>` | submodule と管理文書を追加する |
 | `raprid repo setup-worktrees <名前> [ブランチ ...]` | `repo/` を `local/verification` にし、`.worktrees/` に展開する |
@@ -184,6 +189,44 @@ Git リポジトリの境界 (`.git` のあるディレクトリ) より上は�
 どちらを更新すべきかを表示して終了する (終了コード 1)。
 `scripts/` をシンボリックリンクで共有した場合、`raprid` は判定したルートを操作するが、
 `pnpm raprid` と `node scripts/cli.ts` はリンク先の親を操作する (`RAPRID_ROOT=<ルート>` を付けると揃う)。
+
+### 一覧・詳細の表示と JSON
+
+一覧は案件ごとに「`<案件名>  3件表示 / 全7件`」の見出しを付け、状態ごとに空行で区切る。
+罫線はヘッダーの下の 1 本だけで、pending の待ち理由は行の下に 1 段下げて表示する。
+不整合 (ID の重複・索引のずれ・待っている QA が解決済みなど) は、絞り込みで隠れた項目の分も
+末尾の「要確認」にまとめる。未知の状態は隠さずに末尾へ並べる。
+
+* `--status todo,pending` で状態を指定、`--all` で全件 (併用は引数の誤り)。
+  `--search` は ID・名前・タイトル (QA は質問も) の部分一致で、大文字小文字を区別しない
+* `--long` で依頼元・記録者・日付・パスを添える。actor の無い旧記録は「不明（旧記録）」と表示する
+* 端末 (TTY) では幅に合わせて、80 桁以上は表、40〜79 桁は ID・状態の行とタイトルの行、40 桁未満は縦配置にする。
+  タイトルは 2 行で省略する (`--long` と `show` は全文)。幅は端末幅 (上限 120)、`--width 40〜240` で上書きできる
+* `--border auto|none|ascii|unicode`、`--color auto|always|never`。auto は UTF-8 の端末で Unicode の罫線、
+  `TERM=dumb` か非 TTY では罫線なし。色は TTY で `NO_COLOR` が無いときだけ付け、状態は色が無くても文字で分かる
+* パイプやリダイレクト (非 TTY) では省略・折返し・色を行わない。**機械的に読むときは `--json` を使う**
+
+`--json` は stdout に JSON を 1 つだけ出す (`schemaVersion: 1`)。
+
+| コマンド | 形 |
+| --- | --- |
+| `task list` / `qa list` / `job list` | `{schemaVersion, kind, items, counts: {total, shown, byStatus}, issues}` (counts は絞り込み前の対象案件の件数) |
+| `task show` / `qa show` | `{schemaVersion, kind, item, issues}`。`item.rawMarkdown` に index.md の原文 |
+| `ui snapshot` | `{schemaVersion, generatedAt, scope: {job}, jobs, tasks, qas, issues}` (絞り込み前の全状態) |
+| 失敗 | `{schemaVersion, error: {code, message}}`。引数の誤りは終了コード 2、実行の失敗は 1 |
+
+タスク・QA の項目は `job`・`kind`・`id`・`name`・`path` (ルート相対の index.md)・`title`・`status`・日付・actor・
+`revision` (読み取った index.md のバイト列の SHA-256)。タスクは `completedAt`・`blockedBy`、
+QA は `question`・`answer` (Markdown)・`askTo`・`answeredBy`・`resolvedAt` を持つ。値が無い項目は `null`。
+issues は `code`・`severity` (warning / error)・`job`・`kind`・`id`・`path`・`message`。
+診断があっても取得できた場合は終了コード 0。順序は案件名 → 状態 → 数値 ID → パスで、環境のロケールに依存しない。
+`node scripts/cli.ts --capabilities` は対応機能 (`{"schemaVersion":1,"capabilities":["query-v1"]}`) を返す。
+`ui snapshot` は各ファイルを読み取った内容で一貫させるが、全体を排他したスナップショットではない。
+
+表示幅の計算に使う [string-width](https://github.com/sindresorhus/string-width) は、node_modules が無くても
+`node scripts/cli.ts` で動くよう `scripts/vendor/text-width.mjs` に依存ごと同梱している。
+版は `package.json` と `pnpm-lock.yaml` で固定し、`pnpm install && pnpm vendor:build` で同じ内容を再生成できる
+(ライセンスは `scripts/vendor/THIRD_PARTY_LICENSES.txt`)。生成物は直接編集しない。
 
 `scripts/` 自身の変更は通常のコード変更と同じくテストしてからコミットする (`pnpm typecheck`、`pnpm test`)。
 スキル付属の補助スクリプト (`count_tokens.sh` など) はスキルの中に置き、`scripts/` には移さない。
@@ -281,7 +324,8 @@ raprid task move acme-site T-001 progress                     # 着手する
 raprid task move acme-site T-001 pending qa/Q-001             # 待ちが発生した (blockedBy が必須)
 raprid task move acme-site T-001 todo                         # 待ちが解けた (blockedBy を空にする)
 raprid task move acme-site T-001 done                         # 完了する (completedAt を記入)
-raprid task list acme-site                                    # 一覧と不一致の報告
+raprid task list acme-site                                    # 一覧と不一致の報告 (done は --all で表示)
+raprid task show acme-site T-001                              # 1 件の詳細
 ```
 
 `requestedBy`、`createdBy`、`answeredBy` の actor は `human/<識別子>` または
@@ -354,7 +398,8 @@ test:                                         # 対応する手動テストの�
 raprid qa add acme-site deployment-policy customer "本番反映の手順はこれでよいか" --requested-by agent/codex --created-by agent/codex
 raprid qa resolve acme-site Q-001 "確認環境から実行する" --answered-by human/saiki
 raprid qa move acme-site Q-001 unresolved                 # 再オープンする (回答は残す)
-raprid qa list acme-site
+raprid qa list acme-site                                  # 未解決の一覧 (解決済みは --all か --status resolved)
+raprid qa show acme-site Q-001
 ```
 
 ### AIから人への質問

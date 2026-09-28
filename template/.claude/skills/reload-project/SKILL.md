@@ -31,8 +31,8 @@ find logs -mindepth 3 -maxdepth 3 -type d -path 'logs/[0-9]*' | sort | tail -3 \
 find jobs -mindepth 1 -maxdepth 1 -type d -not -name '.*' | sort
 
 # タスク・QA の一覧と索引の点検 (状態は各 index.md の frontmatter から読む)
-raprid task list    # CLI が無ければ pnpm raprid task list / node scripts/cli.ts task list
-raprid qa list
+raprid task list --all --json    # CLI が無ければ pnpm raprid ... / node scripts/cli.ts ...
+raprid qa list --all --json
 find jobs -path '*/tasks/*/index.md' | sort
 find jobs -path '*/qa/*/index.md' -not -path '*/qa/status/*' | sort
 

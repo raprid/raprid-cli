@@ -14,9 +14,10 @@ const usage = `使い方:
 
 コマンド:
   init   <dir> (省略時は現在のディレクトリ) にプロジェクト管理リポジトリの初期ファイルを生成する
-  job    案件の作成 (create)・旧構成 job/ からの移行 (migrate)
-  task   タスクの追加 (add)・一覧 (list)・状態変更 (move)・詳細の追加 (note)
-  qa     QA の追加 (add)・一覧 (list)・解決 (resolve)・状態変更 (move)
+  job    案件の作成 (create)・一覧 (list)・旧構成 job/ からの移行 (migrate)
+  task   タスクの追加 (add)・一覧 (list)・詳細 (show)・質問 (ask)・状態変更 (move)・詳細の追加 (note)
+  qa     QA の追加 (add)・一覧 (list)・詳細 (show)・解決 (resolve)・状態変更 (move)
+  ui     TUI 用のデータ取得 (snapshot)
   log    agent のセッションログの作成 (create)
   repo   submodule の追加 (add)・worktree の展開 (setup-worktrees)
 
@@ -31,7 +32,7 @@ init 以外は、カレントディレクトリから上へ管理リポジトリ
 終了コード:
   0 成功 / 1 操作できなかった (衝突・書き込み失敗・管理リポジトリが無い・版が非対応) / 2 引数の誤り`;
 
-const groups = new Set(["job", "task", "qa", "log", "repo"]);
+const groups = new Set(["job", "task", "qa", "ui", "log", "repo"]);
 
 function version(): string {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };

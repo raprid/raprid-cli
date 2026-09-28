@@ -165,16 +165,16 @@ test("一覧は frontmatter を正として並べ、索引の不一致を報告�
   ok(["task", "add", "PROJ-1", "b", "pending", "B を待つ", "qa/Q-001"]);
   ok(["job", "create", "other"]);
   let result = ok(["task", "list", "PROJ-1"]);
-  assert.match(result.stdout, /PROJ-1 \(jobs\/PROJ-1\/\)\n  progress \(0\)\n  todo \(1\)\n    T-001 +a +A を作る \[依頼: agent\/test \/ 記録: agent\/test\]\n  pending \(1\)\n    T-002 +b +B を待つ \(待ち: qa\/Q-001\) \[依頼: agent\/test \/ 記録: agent\/test\]\n  done \(0\)\n  合計: 2$/m);
+  assert.match(result.stdout, /^PROJ-1  2件表示 \/ 全2件\nID +状態 +タイトル\nT-001  todo     A を作る\n\nT-002  pending  B を待つ\n  待ち: qa\/Q-001$/m);
   assert.doesNotMatch(result.stdout, /要確認/);
   result = ok(["task", "list"]);
-  assert.match(result.stdout, /^other \(jobs\/other\/\)/m);
+  assert.match(result.stdout, /^other  0件表示 \/ 全0件\n  該当なし$/m);
 
   unlinkSync(join(root, "jobs/PROJ-1/status/todo/a"));
   symlinkSync("../../tasks/a", join(root, "jobs/PROJ-1/status/done/a"));
   symlinkSync("../../tasks/zzz", join(root, "jobs/PROJ-1/status/done/zzz"));
   result = ok(["task", "list", "PROJ-1"]);
-  assert.match(result.stdout, /要確認:\n/);
+  assert.match(result.stdout, /要確認 \(\d+\)\n/);
   assert.match(result.stdout, /索引の不一致: a \(索引: done, status: todo\)/);
   assert.match(result.stdout, /実体のない索引: jobs\/PROJ-1\/status\/done\/zzz/);
 });
@@ -205,7 +205,7 @@ test("QA の追加・解決・再オープン", () => {
   assert.equal(raprid(root, ["qa", "move", "PROJ-1", "Q-001", "unresolved", "余計な回答"]).status, 2);
   ok(["qa", "add", "PROJ-1", "second", "internal", "二つ目"]);
   const result = ok(["qa", "list", "PROJ-1"]);
-  assert.match(result.stdout, /unresolved \(2\)\n    Q-001 +deploy-policy +本番反映の手順はこれでよいか \(customer\) \[依頼: agent\/test \/ 記録: agent\/test\]\n    Q-002 +second +二つ目 \(internal\) \[依頼: agent\/test \/ 記録: agent\/test\]/);
+  assert.match(result.stdout, /^Q-001  unresolved  customer  本番反映の手順はこれでよいか\nQ-002  unresolved  internal  二つ目$/m);
 });
 
 test("AIの質問をQA作成とpending化として一体で記録し、人の回答後に明示的に再開する", () => {
@@ -281,11 +281,11 @@ test("index.md の無いディレクトリは採番前に報告する", () => {
 test("引用符と # を含む blockedBy を一覧で完全に表示する", () => {
   ok(["task", "add", "PROJ-1", "a", "pending", "A", 'other: He said "x # y"']);
   assert.match(read(root, "jobs/PROJ-1/tasks/a/index.md"), /blockedBy:\n  - "other: He said \\"x # y\\""\n/);
-  assert.match(ok(["task", "list", "PROJ-1"]).stdout, /A \(待ち: other: He said "x # y"\)/);
+  assert.match(ok(["task", "list", "PROJ-1"]).stdout, /^T-001  pending  A\n  待ち: other: He said "x # y"$/m);
   // 値の途中の引用符は文字として扱い、" #" 以降はコメントとして除く (YAML と同じ)
   const path = "jobs/PROJ-1/tasks/a/index.md";
   write(root, path, read(root, path).replace(/blockedBy:\n  - .*\n/, "blockedBy:\n  - other: it's ready # メモ\n  - 'it''s # quoted'\n"));
-  assert.match(ok(["task", "list", "PROJ-1"]).stdout, /待ち: other: it's ready, it's # quoted\)/);
+  assert.match(ok(["task", "list", "PROJ-1"]).stdout, /待ち: other: it's ready, it's # quoted$/m);
 });
 
 test("pending で blockedBy が空のタスクを要確認として報告する", () => {
@@ -296,7 +296,7 @@ test("pending で blockedBy が空のタスクを要確認として報告する"
   unlinkSync(link);
   symlinkSync("../../tasks/a", join(root, "jobs/PROJ-1/status/pending/a"));
   const result = ok(["task", "list", "PROJ-1"]);
-  assert.match(result.stdout, /要確認:\n    pending なのに blockedBy が空: a/);
+  assert.match(result.stdout, /待ち: （未記入）\n\n要確認 \(1\)\n  pending なのに blockedBy が空: a\n    T-001  jobs\/PROJ-1\/tasks\/a\/index\.md$/m);
   ok(["qa", "add", "PROJ-1", "dependency", "internal", "開始してよいか"]);
   ok(["task", "move", "PROJ-1", "T-001", "pending", "qa/Q-001"]);
   assert.doesNotMatch(ok(["task", "list", "PROJ-1"]).stdout, /要確認/);

@@ -51,6 +51,23 @@ test("子ディレクトリや特殊文字を含むパスからでも管理リ�
   }
 });
 
+test("一覧の JSON と ui snapshot を委譲し、stdout の JSON をそのまま返す", () => {
+  const root = project("p");
+  assert.equal(raprid(root, ["job", "create", "PROJ-1"]).status, 0);
+  assert.equal(raprid(root, ["task", "add", "PROJ-1", "a", "todo", "日本語のタイトル", "--requested-by", "human/test", "--created-by", "agent/test"]).status, 0);
+  const listed = raprid(root, ["task", "list", "PROJ-1", "--json"]);
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.deepEqual(JSON.parse(listed.stdout).items.map((item: { id: string; title: string }) => `${item.id} ${item.title}`), ["T-001 日本語のタイトル"]);
+  const snapshot = raprid(root, ["ui", "snapshot", "--json"]);
+  assert.equal(snapshot.status, 0, snapshot.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(snapshot.stdout)), ["schemaVersion", "generatedAt", "scope", "jobs", "tasks", "qas", "issues"]);
+  const failed = raprid(root, ["task", "list", "NOPE", "--json"]);
+  assert.equal(failed.status, 1);
+  assert.equal(JSON.parse(failed.stdout).error.code, "JOB_NOT_FOUND");
+  const capabilities = spawnSync(process.execPath, [join(root, "scripts", "cli.ts"), "--capabilities"], { encoding: "utf8" });
+  assert.deepEqual(JSON.parse(capabilities.stdout), { schemaVersion: 1, capabilities: ["query-v1"] });
+});
+
 test("標準出力・標準エラー・終了コードをそのまま返す", () => {
   const root = project("p");
   const usage = raprid(root, ["task", "add", "other"]);
@@ -167,7 +184,7 @@ test("scripts/ の無い旧プロジェクトは同梱の移行処理で移行�
 
   const list = raprid(root, ["task", "list", "PROJ-1"]);
   assert.equal(list.status, 0, list.stderr);
-  assert.match(list.stdout, /todo \(1\)\n    T-001 +api +API/);
+  assert.match(list.stdout, /^T-001  todo  API/m);
   const again = raprid(root, ["job", "migrate", "--apply"]);
   assert.equal(again.status, 0);
   assert.match(again.stdout, /移行済み/);

@@ -126,7 +126,7 @@ raprid task note <案件名> <T-001> <詳細名> "<見出し>"   # 01-<詳細名
 「リンク切れ」「未登録」として拾うまで気づけない。
 
 ```sh
-raprid task list <案件名>      # 「要確認:」が出ないこと
+raprid task list <案件名>      # 末尾に「要確認」が出ないこと (--json なら issues が空)
 head -12 jobs/<案件名>/tasks/<タスク名>/index.md
 ```
 

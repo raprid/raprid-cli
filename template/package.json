@@ -11,10 +11,13 @@
     "raprid": "node scripts/cli.ts",
     "log:create": "node scripts/cli.ts log create",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"scripts/test/*.test.ts\""
+    "test": "node --test \"scripts/test/*.test.ts\"",
+    "vendor:build": "node scripts/vendor/build.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
+    "string-width": "8.3.0",
     "typescript": "^5.0.0"
   }
 }

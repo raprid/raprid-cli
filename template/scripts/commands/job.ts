@@ -4,16 +4,19 @@ import { parse } from "../lib/args.ts";
 import { CliError, UsageError } from "../lib/errors.ts";
 import { exists, isDirectory, tempPath } from "../lib/fsutil.ts";
 import { Job } from "../lib/jobs.ts";
+import { issuesOf, jobJson, printJson, schemaVersion } from "../lib/query.ts";
+import { Collector } from "../lib/records.ts";
 import { projectRoot, templatesDir } from "../lib/root.ts";
+import { sanitize } from "../lib/text.ts";
 import { migrate, usage as migrateUsage } from "./migrate.ts";
 
 export const usage = `使い方:
   raprid job create <案件名>
-  raprid job list
+  raprid job list [--search <文字列>] [--json]
   raprid job migrate [--dry-run | --apply [--plan <計画ハッシュ>] | --restore <移行ID>]
 
 create   scripts/templates/job/ から jobs/<案件名>/ を作る (既存の案件は上書きしない)
-list     jobs/ 配下の案件を名前順に表示する
+list     jobs/ 配下の案件を名前順に表示する (--search で名前の部分一致、--json で件数・診断付きの JSON)
 migrate  旧構成 (job/<案件名>/list/ など) を jobs/ の構成へ移す。詳細は raprid job migrate --help
 
 例:
@@ -47,12 +50,29 @@ function create(argv: string[]): void {
 }
 
 function list(argv: string[]): void {
-  const { positionals } = parse(argv, {}, usage);
+  const { positionals, values } = parse(argv, { json: { type: "boolean" }, search: { type: "string" } }, usage);
   if (positionals.length !== 0) throw new UsageError(usage);
-  const jobs = Job.all(projectRoot());
-  console.log(`案件 (${jobs.length})`);
-  for (const job of jobs) console.log(`  ${job.name}`);
-  console.log(`合計: ${jobs.length}`);
+  if (values.search !== undefined && values.search.trim() === "") throw new UsageError("--search には空でない文字列を指定してください");
+  const needle = values.search?.toLowerCase();
+  const collector = new Collector(projectRoot());
+  const all = collector.jobs();
+  const shown = needle === undefined ? all : all.filter((job) => job.name.toLowerCase().includes(needle));
+  if (values.json) {
+    // 件数と診断のために案件の中身も読む (表示は名前だけなので、通常の一覧では読まない)
+    const datas = all.map((job) => collector.job(job));
+    const names = new Set(shown.map((job) => job.name));
+    printJson({
+      schemaVersion,
+      kind: "job",
+      items: datas.filter((data) => names.has(data.job.name)).map((data) => jobJson(data.record)),
+      counts: { total: all.length, shown: shown.length, byStatus: {} },
+      issues: [...issuesOf(datas), ...collector.rootIssues],
+    });
+    return;
+  }
+  console.log(`案件 (${shown.length})`);
+  for (const job of shown) console.log(`  ${sanitize(job.name)}`);
+  console.log(needle === undefined ? `合計: ${all.length}` : `合計: ${shown.length} (全${all.length}件中)`);
 }
 
 export function run(argv: string[]): void {

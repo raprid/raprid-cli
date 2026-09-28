@@ -1,13 +1,12 @@
-// タスクと QA に共通する作成・状態変更・一覧の処理。
+// タスクと QA に共通する作成・状態変更の処理 (一覧は lib/records.ts と lib/view.ts)。
 // 実体 (<名前>/index.md) と状態索引 (status/<状態>/<名前> へのリンク) を一緒に更新し、
 // 途中で失敗したらこの実行で変えたものだけを戻す。
 
-import { mkdirSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CliError } from "./errors.ts";
 import { exists, isDirectory, lstatOrUndefined, tempPath } from "./fsutil.ts";
 import { Item, type Job, type Kind } from "./jobs.ts";
-import { firstLine } from "./markdown.ts";
 
 export function assertNameFree(job: Job, kind: Kind, name: string): void {
   const item = new Item(job, kind, name);
@@ -86,93 +85,5 @@ export function moveItem(item: Item, newStatus: string, updated: string): string
         // 戻せなかった索引は list で不一致として報告される
       }
     }
-  }
-}
-
-// 一覧: frontmatter の status を正として状態ごとに並べ、ID と索引の不一致を報告する
-export function listItems(job: Job, kind: Kind, describe: (item: Item) => string, inspect?: (item: Item) => string[]): string[] {
-  const out: string[] = [];
-  const items = job.items(kind);
-  const statuses = kind === "task" ? ["progress", "todo", "pending", "done"] : ["unresolved", "resolved"];
-  const statusOf = new Map(items.map((item) => [item, item.tryField("status")]));
-  out.push(kind === "task" ? `${job.name} (jobs/${job.name}/)` : `${job.name} QA (jobs/${job.name}/qa/)`);
-  for (const status of statuses) {
-    const matched = items.filter((item) => statusOf.get(item) === status);
-    out.push(`  ${status} (${matched.length})`);
-    for (const item of matched) {
-      out.push(`    ${(item.idOrEmpty() || "ID未設定").padEnd(8)} ${item.name.padEnd(40)} ${describe(item)}`);
-    }
-  }
-  const unknown = items.filter((item) => !statuses.includes(statusOf.get(item) ?? ""));
-  if (unknown.length > 0) {
-    out.push(`  unknown (${unknown.length})`);
-    for (const item of unknown) {
-      out.push(`    ${(item.idOrEmpty() || "ID未設定").padEnd(8)} ${item.name} (status: ${statusOf.get(item) || "未設定"})`);
-    }
-  }
-  out.push(`  合計: ${items.length}`);
-
-  const issues: string[] = [];
-  const pattern = kind === "task" ? /^T-\d{3,}$/ : /^Q-\d{3,}$/;
-  const byId = new Map<string, string[]>();
-  for (const item of items) {
-    if (!exists(item.index)) {
-      issues.push(`index.md が無い: ${job.display(item.dir)}`);
-      continue;
-    }
-    const id = item.idOrEmpty();
-    if (!pattern.test(id)) {
-      issues.push(`IDが未設定または不正: ${item.name} (${id || "未設定"})`);
-      continue;
-    }
-    byId.set(id, [...(byId.get(id) ?? []), item.name]);
-  }
-  for (const [id, names] of byId) if (names.length > 1) issues.push(`ID重複: ${id} (${names.join(", ")})`);
-  const names = new Set(items.map((item) => item.name));
-  // pending は待っている相手 (blockedBy) が必須
-  if (kind === "task") {
-    for (const item of items) {
-      if (statusOf.get(item) !== "pending") continue;
-      try {
-        if ((item.frontmatter().getList("blockedBy") ?? []).length === 0) issues.push(`pending なのに blockedBy が空: ${item.name}`);
-      } catch (error) {
-        issues.push(error instanceof Error ? error.message : String(error));
-      }
-    }
-  }
-  for (const item of items) {
-    try {
-      const links = item.links();
-      const status = statusOf.get(item);
-      if (links.length === 0) issues.push(`索引なし: ${item.name} (status: ${status || "未設定"})`);
-      if (links.length > 1) issues.push(`索引が複数: ${item.name} (${links.map((link) => link.status).join(", ")})`);
-      for (const link of links) {
-        if (link.target !== job.linkTarget(kind, item.name)) issues.push(`リンク先が不正: ${job.display(link.path)} -> ${link.target}`);
-        else if (link.status !== status) issues.push(`索引の不一致: ${item.name} (索引: ${link.status}, status: ${status || "未設定"})`);
-      }
-    } catch (error) {
-      issues.push(error instanceof Error ? error.message : String(error));
-    }
-    if (inspect) issues.push(...inspect(item));
-  }
-  for (const status of job.statuses(kind)) {
-    const dir = job.statusDir(kind, status);
-    if (!isDirectory(dir)) continue;
-    for (const entry of readdirSync(dir)) {
-      if (entry !== ".gitkeep" && !names.has(entry)) issues.push(`実体のない索引: ${job.display(join(dir, entry))}`);
-    }
-  }
-  if (issues.length > 0) {
-    out.push("  要確認:");
-    for (const issue of issues) out.push(`    ${issue}`);
-  }
-  return out;
-}
-
-export function sectionSummary(item: Item, heading: string): string | undefined {
-  try {
-    return firstLine(item.read(), 2, heading);
-  } catch {
-    return undefined;
   }
 }

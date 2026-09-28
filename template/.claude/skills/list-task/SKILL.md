@@ -14,9 +14,12 @@ description: jobs/ 配下のタスクを progress / todo / pending / done 別に
 案件名の指定があれば絞る。完全一致を優先し、部分一致で複数残るときだけ確認する。
 省略時は全案件。既定では done は件数のみ、完了タスクの指定があれば全件表示する。
 
-まず `raprid task list [<案件名>]` (CLI が無ければ `pnpm raprid task list` か `node scripts/cli.ts task list`) を使う。
-状態別の一覧・待ちの相手・ID と索引の不一致 (「要確認:」) をまとめて出力する。
-コマンドが使えない場合や、日付など追加の項目が必要な場合は実体を直接読む。
+まず `raprid task list [<案件名>] --all --json` (CLI が無ければ `pnpm raprid ...` か `node scripts/cli.ts ...`) を使う。
+`items` (状態・待ちの相手・actor・日付)、`counts`、`issues` (ID と索引の不一致など) を JSON で得られる。
+人に見せる一覧は `raprid task list [<案件名>]` (既定は done 以外。`--all` で全件、`--long` で actor と日付) でもよい。
+不整合は末尾の「要確認」にまとまる。1 件の詳細は `raprid task show <案件名> <ID> [--json]`。
+表示の文字列は整形のため変わりうるので、機械的に読むときは表示ではなく `--json` を使う。
+コマンドが使えない場合は実体を直接読む。
 
 ```sh
 find jobs -path '*/tasks/*/index.md' -not -path 'jobs/.*' | sort

@@ -228,7 +228,7 @@ test("生成先でログ作成とタスク管理の初期操作ができる", ()
   const note = raprid(work, "task", "note", "sample", "T-001", "investigation");
   assert.equal(note.status, 0, note.stderr);
   const list = raprid(work, "task", "list", "sample");
-  assert.match(list.stdout, /progress \(1\)\n    T-001 +first-task +最初のタスク/);
+  assert.match(list.stdout, /^T-001  progress  最初のタスク$/m);
 
   const ask = raprid(work, "task", "ask", "sample", "T-001", "policy", "internal", "方式を確認する", "--requested-by", "agent/test", "--created-by", "agent/test");
   assert.equal(ask.status, 0, ask.stderr);

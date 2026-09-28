@@ -1,19 +1,22 @@
 import { readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, singleLine } from "../lib/args.ts";
-import { actor, actorLabel } from "../lib/actor.ts";
+import { actor } from "../lib/actor.ts";
 import { CliError, UsageError } from "../lib/errors.ts";
 import { Frontmatter, yamlScalar } from "../lib/frontmatter.ts";
 import { localDate, writeFileAtomic } from "../lib/fsutil.ts";
-import { assertNameFree, assertStatusDirs, createItem, listItems, moveItem, sectionSummary } from "../lib/items.ts";
-import { Job, type Item, validateItemName } from "../lib/jobs.ts";
+import { assertNameFree, assertStatusDirs, createItem, moveItem } from "../lib/items.ts";
+import { Job, validateItemName } from "../lib/jobs.ts";
+import { listCommand, showCommand } from "../lib/listing.ts";
 import { appendToSection, headings, splitLines } from "../lib/markdown.ts";
 import { projectRoot } from "../lib/root.ts";
 import { blockedByLines, renderTemplate } from "../lib/template.ts";
+import { displayUsage } from "../lib/view.ts";
 
 export const usage = `使い方:
   raprid task add <案件名> <タスク名> <状態> <タイトル> [blockedBy] --requested-by <actor> --created-by <actor>
-  raprid task list [<案件名>]
+  raprid task list [<案件名>] [--status <状態,...> | --all] [--search <文字列>] [--long] [--json]
+  raprid task show <案件名> <タスクIDまたは名前> [--json]
   raprid task ask <案件名> <タスクIDまたは名前> <QA名> <確認先> <質問内容> --requested-by <actor> --created-by <actor>
   raprid task move <案件名> <タスクIDまたは名前> <状態> [blockedBy]
   raprid task note <案件名> <タスクIDまたは名前> <詳細名> [<見出し>]
@@ -22,9 +25,15 @@ export const usage = `使い方:
 pending には blockedBy (qa/Q-001、task/T-001、other: <待っているもの>) が必要
 actor: human/<識別子> | agent/<識別子>
 
+list は既定で done 以外を表示する (--all で全件、--status todo,pending で状態を指定)。
+--search は ID・名前・タイトルの部分一致 (大文字小文字を区別しない)。未知の状態と「要確認」は常に表示する。
+${displayUsage}
+
 例:
   raprid task add PROJ-123 check-prod-data todo "本番データを確認する" --requested-by human/saiki --created-by agent/codex
   raprid task ask PROJ-123 T-001 deploy-policy customer "本番反映の手順はこれでよいか" --requested-by agent/codex --created-by agent/codex
+  raprid task list PROJ-123 --status pending --long
+  raprid task show PROJ-123 T-001
   raprid task move PROJ-123 T-001 pending qa/Q-001
   raprid task note PROJ-123 T-001 investigation "原因の調査"`;
 
@@ -66,35 +75,12 @@ function add(argv: string[]): void {
   });
 }
 
-function qaReference(item: Item, reference: string): string[] {
-  const parts = reference.split("/");
-  if (parts[0] !== "qa" || parts.length < 2 || parts.length > 3) return [];
-  const jobName = parts.length === 3 ? parts[1] : item.job.name;
-  const selector = parts.at(-1)!;
-  try {
-    const qa = Job.existing(item.job.root, jobName).find("qa", selector);
-    if (qa.tryField("status") === "resolved") return [`解決済みQAを待機中: ${item.name} (${reference})`];
-    if (qa.tryField("status") !== "unresolved") return [`状態が不正なQAを待機中: ${item.name} (${reference})`];
-  } catch {
-    return [`参照先QAが見つからない: ${item.name} (${reference})`];
-  }
-  return [];
+function list(argv: string[]): void {
+  listCommand("task", argv, usage);
 }
 
-function list(argv: string[]): void {
-  const { positionals } = parse(argv, {}, usage);
-  if (positionals.length > 1) throw new UsageError(usage);
-  const root = projectRoot();
-  const jobs = positionals.length === 1 ? [Job.existing(root, positionals[0])] : Job.all(root);
-  const blocks = jobs.map((job) =>
-    listItems(job, "task", (item) => {
-      const title = sectionSummary(item, "タイトル") ?? item.name;
-      const blockedBy = item.tryField("status") === "pending" ? safeList(item.frontmatter.bind(item)) : [];
-      const actors = `依頼: ${actorLabel(item.tryField("requestedBy"))} / 記録: ${actorLabel(item.tryField("createdBy"))}`;
-      return `${blockedBy.length > 0 ? `${title} (待ち: ${blockedBy.join(", ")})` : title} [${actors}]`;
-    }, (item) => item.tryField("status") === "pending" ? safeList(item.frontmatter.bind(item)).flatMap((reference) => qaReference(item, reference)) : []).join("\n"),
-  );
-  console.log(blocks.join("\n\n"));
+function show(argv: string[]): void {
+  showCommand("task", argv, usage);
 }
 
 function ask(argv: string[]): void {
@@ -144,14 +130,6 @@ function ask(argv: string[]): void {
     console.log(`作成: ${id} / ${job.display(qa.index)}`);
     console.log(`変更: ${taskFm.get("id")} / ${task.name} / ${old} -> pending (待ち: qa/${id})`);
   });
-}
-
-function safeList(read: () => Frontmatter): string[] {
-  try {
-    return read().getList("blockedBy") ?? [];
-  } catch {
-    return [];
-  }
 }
 
 function move(argv: string[]): void {
@@ -222,7 +200,7 @@ function note(argv: string[]): void {
 
 export function run(argv: string[]): void {
   const [command, ...rest] = argv;
-  const commands: Record<string, (args: string[]) => void> = { add, ask, list, move, note };
+  const commands: Record<string, (args: string[]) => void> = { add, ask, list, move, note, show };
   if (command === undefined || command === "--help" || command === "-h" || command === "help") {
     console.log(usage);
     if (command === undefined) process.exitCode = 2;

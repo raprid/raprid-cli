@@ -11,7 +11,9 @@ QA の状態は `jobs/<案件名>/qa/<名前>/index.md` の frontmatter `status`
 
 ## 対象と読み方
 
-- まず `raprid qa list [<案件名>]` (CLI が無ければ `pnpm raprid qa list`) で一覧と「要確認:」を得る。
+- まず `raprid qa list [<案件名>] --all --json` (CLI が無ければ `pnpm raprid qa list ...`) で `items` と `issues` を得る。
+  人に見せる一覧は `raprid qa list [<案件名>]` (既定は unresolved。`--all` で全件) で、不整合は末尾の「要確認」にまとまる。
+  回答の全文は `raprid qa show <案件名> <ID> --json` の `item.answer`。
 - 直接読む場合は `jobs/*/qa/<名前>/index.md` を列挙する (`qa/status/` は索引なので除く)。索引に無い実体も対象。
 - キーワードがあればファイル名・質問内容で絞る。案件名や確認先の指定があれば
   親ディレクトリと frontmatter の `job` / `askTo` を使う。案件外は `other` とする。

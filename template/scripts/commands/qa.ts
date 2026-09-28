@@ -1,22 +1,29 @@
 import { parse, singleLine } from "../lib/args.ts";
-import { actor, actorLabel } from "../lib/actor.ts";
+import { actor } from "../lib/actor.ts";
 import { CliError, UsageError } from "../lib/errors.ts";
 import { localDate } from "../lib/fsutil.ts";
-import { assertNameFree, assertStatusDirs, createItem, listItems, moveItem, sectionSummary } from "../lib/items.ts";
+import { assertNameFree, assertStatusDirs, createItem, moveItem } from "../lib/items.ts";
 import { Job, validateItemName } from "../lib/jobs.ts";
+import { listCommand, showCommand } from "../lib/listing.ts";
 import { fencedLines, findSection, splitLines } from "../lib/markdown.ts";
 import { projectRoot } from "../lib/root.ts";
 import { blockedByLines, renderTemplate } from "../lib/template.ts";
+import { displayUsage } from "../lib/view.ts";
 
 export const usage = `使い方:
   raprid qa add <案件名> <QA名> <確認先> <質問内容> [blockedBy] --requested-by <actor> --created-by <actor>
-  raprid qa list [<案件名>]
+  raprid qa list [<案件名>] [--status <状態,...> | --all] [--search <文字列>] [--long] [--json]
+  raprid qa show <案件名> <QA IDまたは名前> [--json]
   raprid qa resolve <案件名> <QA IDまたは名前> <回答> --answered-by <actor>
   raprid qa move <案件名> <QA IDまたは名前> unresolved
   raprid qa move <案件名> <QA IDまたは名前> resolved <回答> --answered-by <actor>
 
 確認先: customer | internal | undecided
 actor: human/<識別子> | agent/<識別子>
+
+list は既定で unresolved を表示する (--all で全件、--status resolved で状態を指定)。
+--search は ID・名前・質問の部分一致 (大文字小文字を区別しない)。未知の状態と「要確認」は常に表示する。
+${displayUsage}
 
 例:
   raprid qa add PROJ-123 correction-policy customer "補正方法はこの方針でよいか" --requested-by agent/codex --created-by agent/codex
@@ -56,18 +63,11 @@ function add(argv: string[]): void {
 }
 
 function list(argv: string[]): void {
-  const { positionals } = parse(argv, {}, usage);
-  if (positionals.length > 1) throw new UsageError(usage);
-  const root = projectRoot();
-  const jobs = positionals.length === 1 ? [Job.existing(root, positionals[0])] : Job.all(root);
-  const blocks = jobs.map((job) =>
-    listItems(job, "qa", (item) => {
-      const answerer = item.tryField("answeredBy");
-      const actors = `依頼: ${actorLabel(item.tryField("requestedBy"))} / 記録: ${actorLabel(item.tryField("createdBy"))}`;
-      return `${sectionSummary(item, "質問内容") ?? item.name} (${item.tryField("askTo") || "確認先未設定"}) [${actors}${answerer ? ` / 回答: ${answerer}` : ""}]`;
-    }).join("\n"),
-  );
-  console.log(blocks.join("\n\n"));
+  listCommand("qa", argv, usage);
+}
+
+function show(argv: string[]): void {
+  showCommand("qa", argv, usage);
 }
 
 // 回答欄の先頭に回答を入れる。既存のメモは残し、"未回答" の仮置きだけを置き換える
@@ -154,7 +154,7 @@ function resolve(argv: string[]): void {
 
 export function run(argv: string[]): void {
   const [command, ...rest] = argv;
-  const commands: Record<string, (args: string[]) => void> = { add, list, move, resolve };
+  const commands: Record<string, (args: string[]) => void> = { add, list, move, resolve, show };
   if (command === undefined || command === "--help" || command === "-h" || command === "help") {
     console.log(usage);
     if (command === undefined) process.exitCode = 2;

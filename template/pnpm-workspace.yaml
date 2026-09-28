@@ -1,0 +1,3 @@
+# esbuild は同梱のバイナリ (optionalDependencies) で動くため、インストール時のスクリプトは実行しない
+allowBuilds:
+  esbuild: false

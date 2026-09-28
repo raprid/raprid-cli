@@ -1,5 +1,5 @@
 {
   "repository": "git@github.com:shono1103/project_template.git",
-  "ref": "main",
-  "commit": "5964d6fdf79e6cfbac77d2d353e478a4d6f3ffbd"
+  "ref": "feature/ui-list-tui",
+  "commit": "54681b51945baa7fbba3fcd080dd704d6b1ec278"
 }

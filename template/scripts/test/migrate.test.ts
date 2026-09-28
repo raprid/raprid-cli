@@ -246,7 +246,7 @@ test("移行するとタスク・QA・成果物・索引・リンクを新構成
   const list = raprid(root, ["task", "list", "PROJ-1"], { script: join(root, "scripts", "cli.ts") });
   assert.equal(list.status, 0, list.stderr);
   assert.doesNotMatch(list.stdout, /要確認/);
-  assert.match(list.stdout, /progress \(1\)\n    T-001 +api-setup +API を用意する/);
+  assert.match(list.stdout, /^T-001  progress  API を用意する$/m);
   const add = raprid(root, ["task", "add", "PROJ-1", "next", "todo", "次"], { script: join(root, "scripts", "cli.ts") });
   assert.match(add.stdout, /T-003/);
 });

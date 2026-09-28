@@ -9,6 +9,11 @@ export const taskStatuses = ["todo", "pending", "progress", "done"] as const;
 export const qaStatuses = ["unresolved", "resolved"] as const;
 export type Kind = "task" | "qa";
 
+// ロケールに依存しない比較 (UTF-16 の符号単位順)。一覧の順序を環境で変えない
+export function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 const namePattern = /^[a-z0-9][a-z0-9-]*$/;
 // QA の実体と状態索引は同じ qa/ に並ぶため、索引のディレクトリ名は使えない
 const reservedQaNames = new Set(["status"]);
@@ -45,17 +50,17 @@ export class Job {
 
   static existing(root: string, name: string | undefined): Job {
     const job = new Job(root, validateJobName(name));
-    if (!isDirectory(job.dir)) throw new CliError(`案件が見つかりません: jobs/${job.name}`);
+    if (!isDirectory(job.dir)) throw new CliError(`案件が見つかりません: jobs/${job.name}`, 1, "JOB_NOT_FOUND");
     return job;
   }
 
   static all(root: string): Job[] {
     const jobsDir = join(root, "jobs");
-    if (!isDirectory(jobsDir)) throw new CliError("jobs/ が見つかりません");
+    if (!isDirectory(jobsDir)) throw new CliError("jobs/ が見つかりません", 1, "JOBS_DIR_MISSING");
     return readdirSync(jobsDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
       .map((entry) => new Job(root, entry.name))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => compareText(a.name, b.name));
   }
 
   display(path: string): string {
@@ -91,7 +96,7 @@ export class Job {
     return readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && !(kind === "qa" && reservedQaNames.has(entry.name)))
       .map((entry) => new Item(this, kind, entry.name))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => compareText(a.name, b.name));
   }
 
   // 既存 ID を検証して次の ID を返す
