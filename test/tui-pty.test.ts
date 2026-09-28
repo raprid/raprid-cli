@@ -31,7 +31,14 @@ interface Result {
   timedOut: boolean;
   output: string;
   expects: { expect: string; found: boolean; at: number }[];
+  signals: { signal: string; pid: number | null; sent: boolean; error: string | null }[];
   termios: { icanon: boolean; echo: boolean } | null;
+}
+
+// 失敗したときに原因を追えるよう、終了状態・シグナル・出力の末尾を添える
+function describe(result: Result): string {
+  const tail = result.output.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").slice(-800);
+  return JSON.stringify({ exitCode: result.exitCode, timedOut: result.timedOut, signals: result.signals, termios: result.termios }) + `\n${tail}`;
 }
 
 function pty(args: string[], steps: Step[], options: { cwd?: string; cols?: number; rows?: number; env?: Record<string, string> } = {}): Result {
@@ -52,8 +59,8 @@ function pty(args: string[], steps: Step[], options: { cwd?: string; cols?: numb
 }
 
 function assertRestored(result: Result): void {
-  assert.equal(result.timedOut, false, "終了する");
-  assert.deepEqual(result.termios, { icanon: true, echo: true }, "canonical と echo に戻る");
+  assert.equal(result.timedOut, false, `終了する\n${describe(result)}`);
+  assert.deepEqual(result.termios, { icanon: true, echo: true }, `canonical と echo に戻る\n${describe(result)}`);
   const entered = result.output.lastIndexOf("\u001b[?1049h");
   assert.ok(entered >= 0, "代替画面に入る");
   const rest = result.output.slice(entered);
@@ -159,7 +166,8 @@ else if (args[0] === "ui") { writeFileSync(${JSON.stringify(pidFile)}, String(pr
   );
   const result = pty(["tui"], [{ expect: "該当する項目がありません", timeout: 10 }, { wait: 3 }, { signal: "TERM", after: 1 }], { cwd: root });
   allFound(result);
-  assert.equal(result.exitCode, 143, "SIGTERM で終了する");
+  assert.deepEqual(result.signals.map((entry) => [entry.signal, entry.sent, entry.error]), [["TERM", true, null]], describe(result));
+  assert.equal(result.exitCode, 143, `SIGTERM で終了する\n${describe(result)}`);
   assertRestored(result);
   assert.ok(existsSync(pidFile), "2 秒後の取得が実行中だった");
   const pid = Number(readFileSync(pidFile, "utf8"));
