@@ -17,15 +17,16 @@ import { blockedByLines, renderTemplate } from "../lib/template.ts";
 import { displayUsage } from "../lib/view.ts";
 
 export const usage = `使い方:
-  raprid task add <案件名> <タスク名> <状態> <タイトル> [blockedBy] --requested-by <actor> --created-by <actor>
+  raprid task add <案件名> <タスク名> <状態> <タイトル> [blockedBy | --blocked-by <値> ...] --requested-by <actor> --created-by <actor>
   raprid task list [<案件名>] [--status <状態,...> | --all] [--search <文字列>] [--long] [--json]
   raprid task show <案件名> <タスクIDまたは名前> [--json]
   raprid task ask <案件名> <タスクIDまたは名前> <QA名> <確認先> <質問内容> --requested-by <actor> --created-by <actor>
-  raprid task move <案件名> <タスクIDまたは名前> <状態> [blockedBy] [--if-match <revision>] [--json]
+  raprid task move <案件名> <タスクIDまたは名前> <状態> [blockedBy | --blocked-by <値> ...] [--if-match <revision>] [--json]
   raprid task note <案件名> <タスクIDまたは名前> <詳細名> [<見出し>]
 
 状態: add は todo | progress | pending、move は todo | pending | progress | done
 pending には blockedBy (qa/Q-001、qa/<案件名>/Q-001、task/T-001、other: <待っているもの>) が必要
+待っている相手が複数なら --blocked-by を繰り返す (値の中のカンマは区切りとみなさない)
 pending から離れるときは、待っているQA (別案件を含む) がすべて resolved であることを確かめる (task/other は確かめない)
 --if-match は show --json の revision。更新前に一致を確かめ、違えば REVISION_CONFLICT で何も変えない
 actor: human/<識別子> | agent/<識別子>
@@ -42,21 +43,26 @@ ${displayUsage}
   raprid task move PROJ-123 T-001 pending qa/Q-001
   raprid task note PROJ-123 T-001 investigation "原因の調査"`;
 
-function blockedByFor(status: string, blockedBy: string | undefined, verb: string): string | undefined {
-  const value = singleLine(blockedBy, "blockedBy", false);
-  if (status === "pending" && !value) throw new UsageError("pendingにはblockedByが必要です");
-  if (status !== "pending" && value) throw new UsageError(`blockedByを指定できるのはpendingへの${verb}時だけです`);
-  return value;
+// 待っている相手の一覧。位置引数は従来どおり 1 件、複数は --blocked-by を繰り返す。
+// 値の中のカンマは区切りとみなさない (other: の説明にカンマを書けるように)
+function blockedByFor(status: string, positional: string | undefined, repeated: string[] | undefined, verb: string): string[] {
+  if (positional !== undefined && repeated !== undefined && repeated.length > 0) {
+    throw new UsageError("blockedBy の位置引数と --blocked-by は同時に指定できません (複数なら --blocked-by を繰り返す)");
+  }
+  const values = repeated !== undefined && repeated.length > 0 ? repeated.map((value) => singleLine(value, "--blocked-by", true)!) : [singleLine(positional, "blockedBy", false)].filter((value): value is string => value !== undefined);
+  if (status === "pending" && values.length === 0) throw new UsageError("pendingにはblockedByが必要です");
+  if (status !== "pending" && values.length > 0) throw new UsageError(`blockedByを指定できるのはpendingへの${verb}時だけです`);
+  return [...new Set(values)];
 }
 
 function add(argv: string[]): void {
-  const { positionals, values } = parse(argv, { "requested-by": { type: "string" }, "created-by": { type: "string" } }, usage);
+  const { positionals, values } = parse(argv, { "requested-by": { type: "string" }, "created-by": { type: "string" }, "blocked-by": { type: "string", multiple: true } }, usage);
   if (positionals.length < 4 || positionals.length > 5) throw new UsageError(usage);
   const [jobName, rawName, status, rawTitle, rawBlockedBy] = positionals;
   const name = validateItemName("task", rawName);
   if (!["todo", "progress", "pending"].includes(status)) throw new UsageError(`初期状態はtodo、progress、pendingのいずれかです: ${status}`);
   const title = singleLine(rawTitle, "タイトル", true)!;
-  const blockedBy = blockedByFor(status, rawBlockedBy, "作成");
+  const blockedBy = blockedByFor(status, rawBlockedBy, values["blocked-by"], "作成");
   const requestedBy = actor(values["requested-by"] ?? process.env.RAPRID_ACTOR, "--requested-by");
   const createdBy = actor(values["created-by"] ?? process.env.RAPRID_ACTOR, "--created-by");
   const job = Job.existing(projectRoot(), jobName);
@@ -173,11 +179,11 @@ function assertQaResolved(root: string, job: Job, blockedBy: string[]): void {
 }
 
 function move(argv: string[]): void {
-  const { positionals, values } = parse(argv, { "if-match": { type: "string" }, json: { type: "boolean" } }, usage);
+  const { positionals, values } = parse(argv, { "if-match": { type: "string" }, json: { type: "boolean" }, "blocked-by": { type: "string", multiple: true } }, usage);
   if (positionals.length < 3 || positionals.length > 4) throw new UsageError(usage);
   const [jobName, selector, status, rawBlockedBy] = positionals;
   if (!["todo", "pending", "progress", "done"].includes(status)) throw new UsageError(`状態はtodo、pending、progress、doneのいずれかです: ${status}`);
-  const blockedBy = blockedByFor(status, rawBlockedBy, "変更");
+  const blockedBy = blockedByFor(status, rawBlockedBy, values["blocked-by"], "変更");
   const ifMatch = parseIfMatch(values["if-match"]);
   const root = projectRoot();
   const job = Job.existing(root, jobName);
@@ -214,7 +220,7 @@ function move(argv: string[]): void {
       fm.set("status", status);
       fm.set("updatedAt", today);
       fm.set("completedAt", status === "done" ? today : "");
-      fm.set("blockedBy", blockedBy ? [yamlScalar(blockedBy)] : []);
+      fm.set("blockedBy", blockedBy.map(yamlScalar));
       const link = moveItem(item, status, fm.toString());
       return { item, link, old, id: fm.get("id") ?? "" };
     });

@@ -35,7 +35,7 @@ export interface WriteTarget {
 
 export type WriteRequest =
   | { type: "answer"; target: WriteTarget; answer: string; actor: string }
-  | { type: "move"; target: WriteTarget; status: string; blockedBy: string | undefined; actor: string };
+  | { type: "move"; target: WriteTarget; status: string; blockedBy: string[] | undefined; actor: string };
 
 export interface Blocker {
   reference: string;
@@ -65,7 +65,8 @@ export interface MoveForm {
   target: WriteTarget;
   stage: "status" | "blocked" | "confirm";
   index: number; // 遷移先 (statusOrder.task の位置)
-  blocked: string; // pending の待ち理由
+  blocked: EditorState; // pending の待ち理由 (1 行に 1 件。カンマで分けない)
+  blockedFocus: "editor" | "next" | "back";
   checked: boolean; // done・QA 以外の待ちの解除を確認した
   focus: "ok" | "back";
   blockers: Blocker[];

@@ -30,7 +30,8 @@ export interface Backend {
   show(kind: Kind, job: string, selector: string): Promise<ShowResult>;
   // guarded-write-v1。revision が一致しなければ REVISION_CONFLICT で失敗する
   resolveQa(job: string, selector: string, answer: string, answeredBy: string, revision: string): Promise<WriteResult>;
-  moveTask(job: string, selector: string, status: string, blockedBy: string | undefined, revision: string): Promise<WriteResult>;
+  // blockedBy は 1 件ずつ --blocked-by で渡す (カンマを区切りに使わない)
+  moveTask(job: string, selector: string, status: string, blockedBy: string[] | undefined, revision: string): Promise<WriteResult>;
   dispose(): void;
 }
 
@@ -149,8 +150,8 @@ export class ScriptBackend implements Backend {
     return (await this.run(args, { input: answer, write: true })) as WriteResult;
   }
 
-  async moveTask(job: string, selector: string, status: string, blockedBy: string | undefined, revision: string): Promise<WriteResult> {
-    const args = ["task", "move", job, selector, status, ...(blockedBy === undefined ? [] : [blockedBy]), "--if-match", revision, "--json"];
+  async moveTask(job: string, selector: string, status: string, blockedBy: string[] | undefined, revision: string): Promise<WriteResult> {
+    const args = ["task", "move", job, selector, status, ...(blockedBy ?? []).flatMap((value) => ["--blocked-by", value]), "--if-match", revision, "--json"];
     return (await this.run(args, { write: true })) as WriteResult;
   }
 

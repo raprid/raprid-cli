@@ -168,7 +168,7 @@ node scripts/cli.ts task list PROJ-123 # pnpm も無い環境
 | `raprid job list [--search <文字列>] [--json]` | 案件を名前順に一覧表示する |
 | `raprid task list [<案件名>] [--status <状態,...> \| --all] [--search <文字列>] [--long] [--json]` | 状態別の一覧 (既定は done 以外)。ID の重複・索引の不一致も「要確認」に報告する |
 | `raprid task show <案件名> <ID\|名前> [--json]` | 1 件の詳細 (actor・日付・依存・本文・診断) |
-| `raprid task move <案件名> <ID\|名前> <状態> [blockedBy] [--if-match <revision>] [--json]` | 状態・日付・依存関係と状態索引を一緒に更新する。pending から離れるときは待っている QA の解決を確かめる |
+| `raprid task move <案件名> <ID\|名前> <状態> [blockedBy \| --blocked-by <値> ...] [--if-match <revision>] [--json]` | 状態・日付・依存関係と状態索引を一緒に更新する。pending から離れるときは待っている QA の解決を確かめる |
 | `raprid task note <案件名> <ID\|名前> <詳細名> [<見出し>]` | 詳細 md を連番で作り、`index.md` の「## 詳細」からリンクする |
 | `raprid qa add <案件名> <QA名> <確認先> <質問内容> [blockedBy]` | QA を追加する |
 | `raprid qa list [<案件名>] [--status <状態,...> \| --all] [--search <文字列>] [--long] [--json]` | QA の一覧 (既定は unresolved) |
@@ -239,6 +239,8 @@ issues は `code`・`severity` (warning / error)・`job`・`kind`・`id`・`path
   変更前に拒否する (終了コード 2)。改行は LF にそろえ、回答欄では `<!-- raprid:answer:begin -->` と
   `<!-- raprid:answer:end -->` で囲んで、見出しやコードブロックを含んでも次の読み取りで回答が切れないようにする。
   1 行の位置引数の回答は従来どおり (区切りを付けない)。位置引数と `--answer-file` は同時に使えない
+* `--blocked-by <値>`: 待っている相手を 1 件ずつ指定する (繰り返して複数)。値の中のカンマは区切りとみなさないので、
+  `other: 部長, 課長の承認` のような説明もそのまま 1 件になる。位置引数の blockedBy (1 件) と同時には使えない
 * `--json` の成功時は `{schemaVersion, ok: true, item, issues}`、失敗時は `{schemaVersion, error: {code, message}}`
 * `task move` で pending から離れるとき、`blockedBy` の QA (`qa/Q-001`・`qa/<案件名>/Q-001`) をロック内で読み直し、
   未解決・見つからない・ID が重複して特定できないものがあれば `BLOCKED_BY_QA` で拒否する。

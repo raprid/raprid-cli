@@ -15,6 +15,7 @@ export function renderTemplate(path: string, values: Record<string, string>): st
   return render(readFileSync(join(templatesDir, path), "utf8"), values);
 }
 
-export function blockedByLines(blockedBy: string | undefined): string {
-  return blockedBy ? `blockedBy:\n  - ${yamlScalar(blockedBy)}` : "blockedBy: []";
+export function blockedByLines(blockedBy: string | string[] | undefined): string {
+  const values = Array.isArray(blockedBy) ? blockedBy : blockedBy ? [blockedBy] : [];
+  return values.length > 0 ? `blockedBy:\n${values.map((value) => `  - ${yamlScalar(value)}`).join("\n")}` : "blockedBy: []";
 }

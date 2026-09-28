@@ -4,7 +4,7 @@
 // 回答してもタスクは自動では再開せず、待っていたタスクを示すだけにする。
 
 import type { WriteResult } from "./backend.js";
-import { backspace, editorIsBlank, editorText, emptyEditor, insertText, moveCursor, newline, normalizeInput } from "./editor.js";
+import { backspace, editorIsBlank, type EditorState, editorText, emptyEditor, insertText, moveCursor, newline, normalizeInput } from "./editor.js";
 import type { AnswerForm, Blocker, Effect, KeyContext, KeyInput, KeyResult, MoveForm, UiState, WaitingTask, WriteRequest, WriteTarget } from "./model.js";
 import { graphemes, sanitize } from "./text.js";
 import { type ItemRecord, type QaRecord, type Snapshot, statusOrder, type TaskRecord } from "./types.js";
@@ -67,7 +67,9 @@ function openForm(state: UiState, context: KeyContext, then: "answer" | "move"):
     target: targetOf(record),
     stage: "status",
     index: Math.max(0, current),
-    blocked: record.kind === "task" && record.status === "pending" ? record.blockedBy.join(", ") : "",
+    // 今の待ち理由を 1 行に 1 件で入れておく (そのまま保存しても失わない)
+    blocked: record.kind === "task" && record.status === "pending" && record.blockedBy.length > 0 ? editorFrom(record.blockedBy) : emptyEditor,
+    blockedFocus: "editor",
     checked: false,
     focus: "ok",
     blockers: [],
@@ -149,7 +151,7 @@ export function pasteIntoForm(state: UiState, text: string): UiState {
   const mode = state.mode;
   if (mode.kind === "answer" && mode.focus === "editor" && !mode.discard) return { ...state, mode: { ...mode, editor: insertText(mode.editor, text), error: undefined } };
   if (mode.kind === "actor") return { ...state, mode: { ...mode, draft: mode.draft + typedLine(text), error: undefined } };
-  if (mode.kind === "move" && mode.stage === "blocked") return { ...state, mode: { ...mode, blocked: mode.blocked + typedLine(text), error: undefined } };
+  if (mode.kind === "move" && mode.stage === "blocked" && mode.blockedFocus === "editor") return { ...state, mode: { ...mode, blocked: insertText(mode.blocked, text), error: undefined } };
   return state;
 }
 
@@ -167,15 +169,31 @@ function moveKey(state: UiState, form: MoveForm, input: string, key: KeyInput, c
     return set({ stage: "confirm", checked: false, focus: "ok", blockers: leaving ? blockersOf(context.snapshot, form.target.job, form.target.blockedBy) : [], error: undefined });
   }
   if (form.stage === "blocked") {
-    if (key.escape) return set({ stage: "status" });
-    if (key.return) {
-      const blocked = form.blocked.trim();
-      if (blocked === "") return set({ error: "pending には待っている相手 (qa/Q-001、task/T-001、other: …) が必要です" });
-      return set({ stage: "confirm", blocked, checked: false, focus: "ok", blockers: [], error: undefined });
+    if (key.escape) return set({ stage: "status", blockedFocus: "editor" });
+    if (key.tab) {
+      const order = ["editor", "next", "back"] as const;
+      const index = order.indexOf(form.blockedFocus);
+      return set({ blockedFocus: order[(index + (key.shift ? order.length - 1 : 1)) % order.length] });
     }
-    if (key.backspace || key.delete) return set({ blocked: withoutLast(form.blocked) });
-    if (input && !key.ctrl && !key.meta && !key.tab) return set({ blocked: form.blocked + typedLine(input), error: undefined });
-    return done(state);
+    if (form.blockedFocus !== "editor") {
+      if (key.leftArrow || key.rightArrow) return set({ blockedFocus: form.blockedFocus === "next" ? "back" : "next" });
+      if (!key.return) return done(state);
+      if (form.blockedFocus === "back") return set({ stage: "status", blockedFocus: "editor" });
+      if (blockedList(form).length === 0) return set({ error: "pending には待っている相手 (qa/Q-001、task/T-001、other: …) が必要です", blockedFocus: "editor" });
+      return set({ stage: "confirm", checked: false, focus: "ok", blockers: [], error: undefined });
+    }
+    let editor = form.blocked;
+    if (key.return) editor = newline(editor);
+    else if (key.backspace || key.delete) editor = backspace(editor);
+    else if (key.leftArrow) editor = moveCursor(editor, "left");
+    else if (key.rightArrow) editor = moveCursor(editor, "right");
+    else if (key.upArrow) editor = moveCursor(editor, "up");
+    else if (key.downArrow) editor = moveCursor(editor, "down");
+    else if (key.home) editor = moveCursor(editor, "home");
+    else if (key.end) editor = moveCursor(editor, "end");
+    else if (input && !key.ctrl && !key.meta) editor = insertText(editor, input);
+    else return done(state);
+    return set({ blocked: editor, error: undefined });
   }
   // confirm
   if (key.escape) return set({ stage: statuses[form.index] === "pending" ? "blocked" : "status", error: undefined });
@@ -188,8 +206,17 @@ function moveKey(state: UiState, form: MoveForm, input: string, key: KeyInput, c
     return set({ error: "未解決・見つからない QA を待っているため解除できません。QA を解決してから変更してください" });
   }
   if (needsCheck(form) && !form.checked) return set({ error: "Space で確認欄に印を付けてから変更してください" });
-  const request: WriteRequest = { type: "move", target: form.target, status, blockedBy: status === "pending" ? form.blocked : undefined, actor: state.actor! };
+  const request: WriteRequest = { type: "move", target: form.target, status, blockedBy: status === "pending" ? blockedList(form) : undefined, actor: state.actor! };
   return done({ ...state, mode: { kind: "saving", request, resume: form, exitRequested: false } }, { kind: "write", request });
+}
+
+// 待ち理由の欄の各行 (前後の空白を除き、空行と重複を除く)。カンマでは分けない
+export function blockedList(form: MoveForm): string[] {
+  return [...new Set(editorText(form.blocked).split("\n").map((line) => line.trim()).filter((line) => line !== ""))];
+}
+
+function editorFrom(lines: string[]): EditorState {
+  return { lines: [...lines], row: lines.length - 1, col: graphemes(lines.at(-1) ?? "").length };
 }
 
 // done への変更と、QA 以外の待ちの解除は、利用者が確認したことを明示してもらう
@@ -304,7 +331,8 @@ export function writeConfirmed(request: WriteRequest, latest: ItemRecord): boole
     const expected = request.answer.replace(/\r\n?/g, "\n").replace(/\s+$/, "");
     return latest.kind === "qa" && latest.status === "resolved" && latest.answer === expected && latest.answeredBy === request.actor;
   }
-  return latest.kind === "task" && latest.status === request.status && (request.blockedBy === undefined ? latest.blockedBy.length === 0 : latest.blockedBy.join(", ") === request.blockedBy);
+  const expected = request.blockedBy ?? [];
+  return latest.kind === "task" && latest.status === request.status && latest.blockedBy.length === expected.length && latest.blockedBy.every((value, index) => value === expected[index]);
 }
 
 // scripts/ が変更前に拒否したことが分かっている失敗 (読み直して確かめる必要がない)

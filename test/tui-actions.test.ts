@@ -168,6 +168,9 @@ test("競合・失敗では入力を残してフォームへ戻し、自動で�
   assert.equal(actions.writeConfirmed(request, { ...data.qas[0], status: "resolved", answer: "私の回答", answeredBy: "human/saiki" }), true);
   assert.equal(actions.writeConfirmed(request, { ...data.qas[0], status: "resolved", answer: "別の回答", answeredBy: "human/saiki" }), false);
   assert.ok(actions.knownRejections.has("REVISION_CONFLICT") && !actions.knownRejections.has("INVALID_RESPONSE"));
+  const move = { type: "move" as const, target: request.target, status: "pending", blockedBy: ["qa/Q-001", "other: A, B"], actor: "human/saiki" };
+  assert.equal(actions.writeConfirmed(move, { ...data.tasks[0], status: "pending", blockedBy: ["qa/Q-001", "other: A, B"] }), true);
+  assert.equal(actions.writeConfirmed(move, { ...data.tasks[0], status: "pending", blockedBy: ["qa/Q-001, other: A, B"] }), false, "1 件に潰れていたら保存できたとみなさない");
 });
 
 test("状態変更: pending には待ち理由が要り、pending の解除は QA の状態と QA 以外の待ちの確認を求める", () => {
@@ -180,10 +183,23 @@ test("状態変更: pending には待ち理由が要り、pending の解除は Q
   // todo → pending
   let result = typeAll(onTask("T-003"), "m", { downArrow: true }, { return: true });
   assert.equal((result.state.mode as import("../src/tui/model.js").MoveForm).stage, "blocked");
-  result = typeAll(result.state, { return: true });
+  result = typeAll(result.state, { tab: true }, { return: true });
   assert.match((result.state.mode as { error?: string }).error ?? "", /待っている相手/);
-  result = typeAll(result.state, "other: 回答待ち", { return: true }, { return: true });
-  assert.deepEqual(result.effects.at(-1), { kind: "write", request: { type: "move", target: (result.state.mode as { request: { target: unknown } }).request.target, status: "pending", blockedBy: "other: 回答待ち", actor: "human/saiki" } });
+  result = typeAll(result.state, "other: 部長, 課長の承認", { return: true }, "q と m も文字", { return: true }, { return: true }, "qa/Q-001", { tab: true }, { return: true });
+  assert.equal((result.state.mode as import("../src/tui/model.js").MoveForm).stage, "confirm");
+  result = typeAll(result.state, { return: true });
+  assert.deepEqual(result.effects.at(-1), {
+    kind: "write",
+    request: { type: "move", target: (result.state.mode as { request: { target: unknown } }).request.target, status: "pending", blockedBy: ["other: 部長, 課長の承認", "q と m も文字", "qa/Q-001"], actor: "human/saiki" },
+  }, "1 行に 1 件。カンマで分けず、空行は除く");
+
+  // 複数の待ち理由を持つ pending を開き直して、そのまま保存しても失わない
+  const pendingState = onTask("T-002");
+  result = typeAll(pendingState, "m", { return: true }); // pending のまま待ち理由を見直す
+  const prefilled = result.state.mode as import("../src/tui/model.js").MoveForm;
+  assert.deepEqual(prefilled.blocked.lines, ["qa/PROJ-1/Q-001", "other: 承認"]);
+  result = typeAll(result.state, { tab: true }, { return: true }, { return: true });
+  assert.deepEqual((result.effects.at(-1) as { request: { blockedBy: string[] } }).request.blockedBy, ["qa/PROJ-1/Q-001", "other: 承認"]);
 
   // 未解決の QA を待つ pending は解除できない
   result = typeAll(onTask("T-001"), "m", { upArrow: true }, { return: true });

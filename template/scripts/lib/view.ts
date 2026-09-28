@@ -114,10 +114,37 @@ function borderLine(display: Display, sizes: number[]): string | undefined {
   return sizes.map((size) => char.repeat(Math.max(1, size))).join("  ");
 }
 
-// indent を付けて limit に収める (limit が無ければ折り返さない)
+// indent を付けて limit に収める (limit が無ければ折り返さない)。字下げが幅を超える狭い端末では字下げを減らす
 function indented(text: string, indent: number, limit: number | undefined): string[] {
-  const room = limit === undefined ? undefined : Math.max(10, limit - indent);
-  return wrap(text, room).map((line) => " ".repeat(indent) + line);
+  const pad = limit === undefined ? indent : Math.min(indent, Math.max(0, limit - 1));
+  const room = limit === undefined ? undefined : Math.max(1, limit - pad);
+  return wrap(text, room).map((line) => " ".repeat(pad) + line);
+}
+
+// ID・状態・確認先などの短い要素を 1 行に並べ、幅を超えるなら次の行へ送る。
+// 要素は省略しない (1 つで幅を超えるときだけ折り返す)。色は並べた後に付けるので幅の計算に入らない
+function packSegments(segments: { text: string; style?: Style }[], gap: string, limit: number, display: Display): string[] {
+  const lines: string[] = [];
+  let current = "";
+  let used = 0;
+  const flush = () => {
+    if (used > 0) lines.push(current);
+    current = "";
+    used = 0;
+  };
+  for (const segment of segments) {
+    const size = width(segment.text);
+    if (used > 0 && used + width(gap) + size > limit) flush();
+    if (size > limit) {
+      flush();
+      for (const part of wrap(segment.text, limit)) lines.push(paint(display, part, segment.style));
+      continue;
+    }
+    current += (used > 0 ? gap : "") + paint(display, segment.text, segment.style);
+    used += (used > 0 ? width(gap) : 0) + size;
+  }
+  flush();
+  return lines;
 }
 
 function detailLines(record: ItemRecord, display: Display): string[] {
@@ -193,7 +220,7 @@ function stackedRows(kind: Kind, records: ItemRecord[], display: Display, minima
   const indent = minimal ? 0 : 2;
   const lines: string[] = [];
   if (!minimal) {
-    lines.push(`${padEnd("ID", idWidth)}  状態${kind === "qa" ? "  確認先" : ""}`, "  タイトル");
+    lines.push(...packSegments([{ text: padEnd("ID", idWidth) }, { text: "状態" }, ...(kind === "qa" ? [{ text: "確認先" }] : [])], "  ", lineWidth, display), "  タイトル");
     const border = borderLine(display, [lineWidth]);
     if (border) lines.push(border);
   }
@@ -201,10 +228,10 @@ function stackedRows(kind: Kind, records: ItemRecord[], display: Display, minima
   statusGroups(kind, records).forEach((group, index) => {
     if (index > 0 || minimal) lines.push("");
     for (const record of group) {
-      const head = [minimal ? idText(record) : padEnd(idText(record), idWidth), paint(display, statusText(record), statusStyle(record))];
-      if (record.kind === "qa") head.push(sanitize(record.askTo ?? "未設定"));
-      lines.push(head.join(gap));
-      for (const line of clampLines(titleText(record), lineWidth - indent, maxLines, display.ellipsis)) lines.push(" ".repeat(indent) + line);
+      const head: { text: string; style?: Style }[] = [{ text: minimal ? idText(record) : padEnd(idText(record), idWidth) }, { text: statusText(record), style: statusStyle(record) }];
+      if (record.kind === "qa") head.push({ text: sanitize(record.askTo ?? "未設定") });
+      lines.push(...packSegments(head, gap, lineWidth, display));
+      for (const line of clampLines(titleText(record), Math.max(1, lineWidth - indent), maxLines, display.ellipsis)) lines.push(" ".repeat(indent) + line);
       for (const detail of detailLines(record, display)) lines.push(...indented(detail, indent, lineWidth));
     }
   });

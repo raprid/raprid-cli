@@ -138,11 +138,13 @@ test("タスクの状態変更: 遷移先と待ち理由を確かめてから保
   await tick(40);
   await app.press(keys.down, "m");
   assert.match(app.frame(), /T-002 の状態を変更  \(現在: todo\)  操作者 human\/saiki/);
-  await app.press(keys.down, keys.enter, "other: 権限の付与", keys.enter);
+  await app.press(keys.down, keys.enter, "other: 権限の付与, 予算", keys.enter, paste("qa/Q-001\ntask/T-001"));
+  assert.match(app.frame(), /3 件/);
+  await app.press(keys.tab, keys.enter);
   assert.match(app.frame(), /変更  todo → pending/);
-  assert.match(app.frame(), /待ち  other: 権限の付与/);
+  assert.match(app.frame(), /待ち: +║\n║  other: 権限の付与, 予算 +║\n║  qa\/Q-001 +║\n║  task\/T-001 /);
   await app.press(keys.enter);
-  assert.deepEqual(app.backend.writeCalls[0].args, ["moveTask", "PROJ-1", "t-002", "pending", "other: 権限の付与", "rev-t-002"]);
+  assert.deepEqual(app.backend.writeCalls[0].args, ["moveTask", "PROJ-1", "t-002", "pending", ["other: 権限の付与, 予算", "qa/Q-001", "task/T-001"], "rev-t-002"]);
   app.backend.writeCalls[0].reply.reject(new BackendError("BLOCKED_BY_QA", "待っているQAが解決していないため pending を解除できません"));
   await tick(60);
   assert.match(app.frame(), /保存できませんでした: 待っているQAが解決していない/);

@@ -199,3 +199,35 @@ test("待っている QA の案件もロックし、同時に更新しても止�
   assert.deepEqual(JSON.parse(ok(["task", "list", "PROJ-1", "--json"]).stdout).counts.byStatus.progress, 4);
   assert.equal(JSON.parse(ok(["qa", "list", "other", "--json"]).stdout).items.length, 3);
 });
+
+test("複数の待ち理由は --blocked-by を繰り返して無損失で保存し、カンマを区切りとみなさない", () => {
+  ok(["job", "create", "other"]);
+  ok(["qa", "add", "PROJ-1", "first", "internal", "一つ目"]);
+  ok(["qa", "add", "PROJ-1", "second", "internal", "二つ目"]);
+  ok(["qa", "add", "other", "remote", "internal", "別案件"]);
+  ok(["task", "add", "PROJ-1", "a", "pending", "複数待ち", "--blocked-by", "qa/Q-001", "--blocked-by", "qa/Q-002"]);
+  const path = "jobs/PROJ-1/tasks/a/index.md";
+  assert.match(read(root, path), /blockedBy:\n  - qa\/Q-001\n  - qa\/Q-002\n/);
+  const reasons = ["qa/Q-001", "qa/other/Q-001", "other: 承認 (部長, 課長)", "task/T-009"];
+  const moved = JSON.parse(ok(["task", "move", "PROJ-1", "T-001", "pending", ...reasons.flatMap((value) => ["--blocked-by", value]), "--if-match", revision("task", "T-001"), "--json"]).stdout);
+  assert.deepEqual(moved.item.blockedBy, reasons, "QA・別案件の QA・カンマを含む other・task を 1 件ずつ保つ");
+  assert.deepEqual(JSON.parse(ok(["task", "list", "PROJ-1", "--json"]).stdout).issues, [], "QA の参照が壊れない");
+  // 同じ一覧で保存し直しても変わらない
+  const again = JSON.parse(ok(["task", "move", "PROJ-1", "T-001", "pending", ...reasons.flatMap((value) => ["--blocked-by", value]), "--json"]).stdout);
+  assert.deepEqual(again.item.blockedBy, reasons);
+  // 従来の位置引数は 1 件として扱い、カンマで分けない
+  ok(["task", "move", "PROJ-1", "T-001", "pending", "other: A, B"]);
+  assert.deepEqual(JSON.parse(ok(["task", "show", "PROJ-1", "T-001", "--json"]).stdout).item.blockedBy, ["other: A, B"]);
+  const before = unchanged();
+  assert.equal(raprid(root, ["task", "move", "PROJ-1", "T-001", "pending", "qa/Q-001", "--blocked-by", "qa/Q-002"]).status, 2, "位置引数と --blocked-by は併用できない");
+  assert.equal(raprid(root, ["task", "move", "PROJ-1", "T-001", "todo", "--blocked-by", "qa/Q-001"]).status, 2, "pending 以外には指定できない");
+  assert.equal(raprid(root, ["task", "move", "PROJ-1", "T-001", "pending", "--blocked-by", ""]).status, 2, "空の値は指定できない");
+  assert.equal(raprid(root, ["task", "move", "PROJ-1", "T-001", "pending", "--blocked-by", "a\nb"]).status, 2, "改行を含む値は指定できない");
+  assert.deepEqual(unchanged(), before);
+  // 複数の QA を待つ pending は、すべて解決するまで解除できない
+  ok(["task", "move", "PROJ-1", "T-001", "pending", "--blocked-by", "qa/Q-001", "--blocked-by", "qa/other/Q-001"]);
+  ok(["qa", "resolve", "PROJ-1", "Q-001", "よい", "--answered-by", "human/saiki"]);
+  assert.match(JSON.parse(raprid(root, ["task", "move", "PROJ-1", "T-001", "progress", "--json"]).stdout).error.message, /qa\/other\/Q-001 \(未解決\)/);
+  ok(["qa", "resolve", "other", "Q-001", "よい", "--answered-by", "human/saiki"]);
+  ok(["task", "move", "PROJ-1", "T-001", "progress"]);
+});

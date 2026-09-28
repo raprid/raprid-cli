@@ -124,7 +124,7 @@ export class FakeBackend implements Backend {
     return reply.promise;
   }
 
-  moveTask(job: string, selector: string, status: string, blockedBy: string | undefined, revision: string): Promise<WriteResult> {
+  moveTask(job: string, selector: string, status: string, blockedBy: string[] | undefined, revision: string): Promise<WriteResult> {
     const reply = deferred<WriteResult>();
     this.writeCalls.push({ args: ["moveTask", job, selector, status, blockedBy, revision], reply });
     return reply.promise;

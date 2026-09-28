@@ -54,6 +54,32 @@ test("端末幅 20・40・79・80・120 で各行が幅に収まり、ID と状�
   }
 });
 
+test("QA と長い状態も、端末幅 20・40・79・80・120 の各行が幅に収まり、ID・状態・確認先を省略しない", () => {
+  for (const size of [12, 20, 40, 79, 80, 120]) {
+    for (const [kind, filter] of [["qa", {}], ["task", { all: true }]] as const) {
+      const text = render(kind, display({ width: size, long: true }), filter);
+      for (const line of text.split("\n")) assert.ok(width(line) <= size, `${kind} ${size}: ${line} (${width(line)})`);
+    }
+    const qaText = render("qa", display({ width: size }));
+    for (const value of ["Q-001", "unresolved", "customer"]) assert.ok(qaText.includes(value), `${size}: ${value} を省略しない`);
+  }
+  // 20 桁: ID と状態の後ろに確認先が入らないので、確認先を次の行へ送る
+  assert.match(render("qa", display({ width: 20 })), /\nQ-001 unresolved\ncustomer\n確認先の列を持つ質問/);
+  // 状態の値が幅より長い古い記録も、折り返して全部出す
+  const path = "jobs/PROJ-1/tasks/short/index.md";
+  const original = read(root, path);
+  write(root, path, original.replace("status: todo", "status: waiting-for-a-very-long-external-approval"));
+  try {
+    for (const size of [20, 40]) {
+      const text = render("task", display({ width: size }));
+      for (const line of text.split("\n")) assert.ok(width(line) <= size, `${size}: ${line}`);
+      assert.ok(text.replace(/\n/g, "").includes("waiting-for-a-very-long-external-approval"), `${size}: 状態を省略しない`);
+    }
+  } finally {
+    write(root, path, original);
+  }
+});
+
 test("幅 80 以上は表、40〜79 は ID・状態とタイトルの行、40 未満は縦配置にする", () => {
   const table = render("task", display({ width: 80 }));
   assert.match(table, /^PROJ-1  3件表示 \/ 全4件\nID     状態      タイトル\n─────  ────────  ─+\nT-001  progress  日本語/);

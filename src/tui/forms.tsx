@@ -2,7 +2,7 @@
 
 import { Box, Text } from "ink";
 import type { ReactNode } from "react";
-import { needsCheck } from "./actions.js";
+import { blockedList, needsCheck } from "./actions.js";
 import { editorText, layoutEditor } from "./editor.js";
 import type { AnswerForm, Mode, MoveForm, UiState } from "./model.js";
 import { sanitize, truncate, wrap } from "./text.js";
@@ -122,18 +122,29 @@ function MoveView(props: { form: MoveForm; state: UiState; width: number; height
       </>
     );
   } else if (form.stage === "blocked") {
+    const rows = layoutEditor(form.blocked, inner - 2, Math.max(3, props.height - 8));
     body = (
       <>
-        <Text>待っている相手を入力してください (qa/Q-001、qa/&lt;案件名&gt;/Q-001、task/T-001、other: …)</Text>
+        <Text>待っている相手を 1 行に 1 件ずつ入力してください (qa/Q-001、qa/&lt;案件名&gt;/Q-001、task/T-001、other: …)</Text>
+        <Box flexDirection="column" borderStyle={form.blockedFocus === "editor" ? "bold" : "single"} width={inner}>
+          {rows.map((row, index) => (
+            <Text key={index} wrap="truncate-end">
+              {row.before}
+              {row.cursor !== undefined && form.blockedFocus === "editor" ? <Text inverse>{row.cursor}</Text> : (row.cursor ?? "")}
+              {row.after}
+            </Text>
+          ))}
+        </Box>
         <Text>
-          &gt; {truncate(form.blocked, inner - 4)}
-          <Text inverse> </Text>
+          <Button label="次へ" focused={form.blockedFocus === "next"} />
+          <Button label="戻る" focused={form.blockedFocus === "back"} />
+          <Text dimColor>  {blockedList(form).length} 件</Text>
         </Text>
       </>
     );
   } else {
     const lines = [`案件  ${form.target.job}`, `ID    ${form.target.id}  ${form.target.title}`, `変更  ${form.target.status} → ${target}`];
-    if (target === "pending") lines.push(`待ち  ${form.blocked}`);
+    if (target === "pending") lines.push("待ち:", ...blockedList(form).map((value) => `  ${value}`));
     if (form.blockers.length > 0) lines.push("解除する待ち:", ...form.blockers.map((blocker) => `  ${blockerText[blocker.state]}  ${blocker.reference}`));
     const check = target === "done" ? "完了条件を満たしたことを確認した" : "上記の QA 以外の待ちが解消したことを確認した";
     body = (
@@ -220,7 +231,7 @@ export function formHints(state: UiState): string | undefined {
       return "Enter 実行  Tab / ←→ 切替  Esc 編集に戻る";
     case "move":
       if (mode.stage === "status") return "↑↓ 遷移先を選択  Enter 次へ  Esc 取消";
-      if (mode.stage === "blocked") return "待っている相手を入力  Enter 次へ  Esc 戻る";
+      if (mode.stage === "blocked") return mode.blockedFocus === "editor" ? "1 行に 1 件  Enter 次の行  Tab 次へ/戻る  Esc 戻る" : "Enter 実行  Tab / ←→ 切替  Esc 戻る";
       return "Space 確認欄  Tab / ←→ 切替  Enter 実行  Esc 戻る";
     case "saving":
       return "保存中…";

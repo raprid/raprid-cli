@@ -196,3 +196,24 @@ test("通常の CLI は Ink / React を読み込まず、tui のときだけ読�
   assert.notEqual(tui.status, 0);
   assert.match(tui.stderr, /Cannot find package '(ink|react)'/, "tui だけが Ink / React を読み込む");
 });
+
+test("backend は複数の待ち理由を --blocked-by で 1 件ずつ渡し、実際の scripts/ で無損失に保存される", async () => {
+  const cli = join(repoRoot, "dist", "cli.js");
+  const root = join(work, "blocked");
+  assert.equal(spawnSync(process.execPath, [cli, "init", root, "--no-git"], { encoding: "utf8" }).status, 0);
+  const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: root, env, encoding: "utf8" });
+  assert.equal(run("job", "create", "PROJ-1").status, 0);
+  assert.equal(run("qa", "add", "PROJ-1", "first", "internal", "一つ目").status, 0);
+  assert.equal(run("qa", "add", "PROJ-1", "second", "internal", "二つ目").status, 0);
+  assert.equal(run("task", "add", "PROJ-1", "a", "todo", "A").status, 0);
+  const backend = new ScriptBackend(root);
+  const reasons = ["qa/Q-001", "qa/Q-002", "other: 部長, 課長の承認"];
+  let item = (await backend.show("task", "PROJ-1", "a")).item;
+  const saved = await backend.moveTask("PROJ-1", "a", "pending", reasons, item.revision!);
+  assert.deepEqual(saved.item.kind === "task" && saved.item.blockedBy, reasons);
+  item = (await backend.show("task", "PROJ-1", "a")).item;
+  const again = await backend.moveTask("PROJ-1", "a", "pending", item.kind === "task" ? item.blockedBy : [], item.revision!);
+  assert.deepEqual(again.item.kind === "task" && again.item.blockedBy, reasons, "そのまま保存し直しても変わらない");
+  assert.deepEqual((await backend.snapshot()).issues, [], "QA の参照が壊れない");
+});
