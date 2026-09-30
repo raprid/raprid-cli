@@ -1,0 +1,1619 @@
+{
+ "description": "正しいフィクスチャ (base) の一部を set / delete で変えた不正な例。schema は JSON Schema だけで拒否できるか (構造の規則なら false、項目をまたぐ規則なら true)、codes は validateTaskV2 が返す code と項目。",
+ "cases": [
+  {
+   "name": "対応していない版",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "workflowVersion"
+     ],
+     5
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_VERSION",
+     "workflowVersion"
+    ]
+   ]
+  },
+  {
+   "name": "全体の状態が不正",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "status"
+     ],
+     "doing"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "status"
+    ]
+   ]
+  },
+  {
+   "name": "工程が不正",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "phase"
+     ],
+     "deploy"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "phase"
+    ]
+   ]
+  },
+  {
+   "name": "工程の状態が不正",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "status"
+     ],
+     "started"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "workflow.plan.status"
+    ]
+   ]
+  },
+  {
+   "name": "actor の形が不正",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "assignee"
+     ],
+     "claude"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ACTOR",
+     "workflow.implement.assignee"
+    ]
+   ]
+  },
+  {
+   "name": "必須の項目が無い",
+   "base": "v2-new.md",
+   "delete": [
+    [
+     "workflow",
+     "review",
+     "attempt"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_MISSING",
+     "workflow.review.attempt"
+    ]
+   ]
+  },
+  {
+   "name": "入力の履歴 (inputSeq) の項目が無い",
+   "base": "v2-new.md",
+   "delete": [
+    [
+     "workflow",
+     "plan",
+     "inputSeq"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_MISSING",
+     "workflow.plan.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "上位の必須項目が無い",
+   "base": "v2-new.md",
+   "delete": [
+    [
+     "requirementRevision"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_MISSING",
+     "requirementRevision"
+    ]
+   ]
+  },
+  {
+   "name": "試行回数が 0",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "attempt"
+     ],
+     0
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_TYPE",
+     "workflow.plan.attempt"
+    ]
+   ]
+  },
+  {
+   "name": "inputSeq が 0",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "inputSeq"
+     ],
+     0
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_TYPE",
+     "workflow.implement.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "配列ではない blockedBy",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "blockedBy"
+     ],
+     "qa/Q-001"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_TYPE",
+     "blockedBy"
+    ]
+   ]
+  },
+  {
+   "name": "関連タスクの参照が不正",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "relatedTasks"
+     ],
+     [
+      "T-009"
+     ]
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_REF",
+     "relatedTasks[0]"
+    ]
+   ]
+  },
+  {
+   "name": "成果物がタスクの外を指す",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "artifactRefs"
+     ],
+     [
+      {
+       "path": "../secret.md"
+      }
+     ]
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_REF",
+     "workflow.plan.artifactRefs[0].path"
+    ]
+   ]
+  },
+  {
+   "name": "成果物が絶対パス",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "artifactRefs"
+     ],
+     [
+      {
+       "path": "/etc/passwd"
+      }
+     ]
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_REF",
+     "workflow.plan.artifactRefs[0].path"
+    ]
+   ]
+  },
+  {
+   "name": "commit に repo が無い",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "artifactRefs"
+     ],
+     [
+      {
+       "commit": "11354a7"
+      }
+     ]
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_REF",
+     "workflow.implement.artifactRefs[0].repo"
+    ]
+   ]
+  },
+  {
+   "name": "成果物に使えない項目",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "artifactRefs"
+     ],
+     [
+      {
+       "path": "a.md",
+       "url": "http://example.com"
+      }
+     ]
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_UNKNOWN",
+     "workflow.implement.artifactRefs[0]"
+    ]
+   ]
+  },
+  {
+   "name": "未知の工程",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "deploy"
+     ],
+     {
+      "status": "waiting"
+     }
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_UNKNOWN",
+     "workflow"
+    ]
+   ]
+  },
+  {
+   "name": "履歴が空",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "history"
+     ],
+     []
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の actor が空",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "actor"
+     ],
+     null
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ACTOR",
+     "history[0].actor"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の出来事が不正",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "event"
+     ],
+     "approve"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "history[0].event"
+    ]
+   ]
+  },
+  {
+   "name": "理由に改行",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "reason"
+     ],
+     "一行目\n二行目"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_TYPE",
+     "history[0].reason"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の時刻が日付だけ",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "at"
+     ],
+     "2026-09-28"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_DATETIME",
+     "history[0].at"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の時刻にタイムゾーンが無い",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "at"
+     ],
+     "2026-09-28T01:00:00"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_DATETIME",
+     "history[0].at"
+    ]
+   ]
+  },
+  {
+   "name": "存在しない日付",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "createdAt"
+     ],
+     "2026-02-30"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_DATE",
+     "createdAt"
+    ]
+   ]
+  },
+  {
+   "name": "存在しない日時",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "at"
+     ],
+     "2026-02-30T00:00:00Z"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_DATETIME",
+     "history[0].at"
+    ]
+   ]
+  },
+  {
+   "name": "工程を飛ばしている",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "phase"
+     ],
+     "review"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_ORDER",
+     "workflow.implement.status"
+    ],
+    [
+     "WF_ORDER",
+     "workflow.review.status"
+    ]
+   ]
+  },
+  {
+   "name": "後の工程が先に進んでいる",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "status"
+     ],
+     "ready"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_ORDER",
+     "workflow.review.status"
+    ]
+   ]
+  },
+  {
+   "name": "open なのに工程が空",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "phase"
+     ],
+     null
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_OPEN_PHASE",
+     "phase"
+    ]
+   ]
+  },
+  {
+   "name": "pending なのに待ちの相手が無い",
+   "base": "v2-pending-qa.md",
+   "set": [
+    [
+     [
+      "blockedBy"
+     ],
+     []
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_BLOCKED",
+     "blockedBy"
+    ]
+   ]
+  },
+  {
+   "name": "pending ではないのに待ちの相手がある",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "blockedBy"
+     ],
+     [
+      "qa/Q-001"
+     ]
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_BLOCKED",
+     "blockedBy"
+    ]
+   ]
+  },
+  {
+   "name": "done なのに完了した人が無い",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "completedBy"
+     ],
+     null
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_DONE",
+     "workflow.plan.completedBy"
+    ]
+   ]
+  },
+  {
+   "name": "成果物の無い通常の完了",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "artifactRefs"
+     ],
+     []
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_DONE",
+     "workflow.review.artifactRefs"
+    ]
+   ]
+  },
+  {
+   "name": "作業中の工程に要件の版が無い",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "inputRevision"
+     ],
+     null
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_DONE",
+     "workflow.plan.inputRevision"
+    ]
+   ]
+  },
+  {
+   "name": "progress の工程に担当が無い",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "assignee"
+     ],
+     null
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_ASSIGNEE",
+     "workflow.implement.assignee"
+    ]
+   ]
+  },
+  {
+   "name": "pending の工程に担当が無い",
+   "base": "v2-pending-qa.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "assignee"
+     ],
+     null
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_ASSIGNEE",
+     "workflow.implement.assignee"
+    ]
+   ]
+  },
+  {
+   "name": "レビューの結果が completed",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "outcome"
+     ],
+     "completed"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_OUTCOME",
+     "workflow.review.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "進行中の工程に前の結果が残っている",
+   "base": "v2-review-returned.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "outcome"
+     ],
+     "completed"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_DONE",
+     "workflow.implement.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "完了の履歴と completedBy が違う",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "history",
+      3,
+      "actor"
+     ],
+     "agent/other"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_COMPLETION",
+     "workflow.review.completedBy"
+    ]
+   ]
+  },
+  {
+   "name": "今の試行の完了の履歴が無い",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "attempt"
+     ],
+     2
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_COMPLETION",
+     "workflow.plan.status"
+    ]
+   ]
+  },
+  {
+   "name": "出来事と工程が合わない",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "history",
+      3,
+      "event"
+     ],
+     "complete"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_EVENT",
+     "history[3].event"
+    ]
+   ]
+  },
+  {
+   "name": "実装者が自分でレビューした",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "completedBy"
+     ],
+     "agent/claude"
+    ],
+    [
+     [
+      "history",
+      3,
+      "actor"
+     ],
+     "agent/claude"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_SEPARATION",
+     "workflow.review.completedBy"
+    ]
+   ]
+  },
+  {
+   "name": "AI が受入確認を完了した",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "acceptance",
+      "completedBy"
+     ],
+     "agent/codex"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HUMAN",
+     "workflow.acceptance.completedBy"
+    ]
+   ]
+  },
+  {
+   "name": "受入確認の担当が AI",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "acceptance",
+      "assignee"
+     ],
+     "agent/codex"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HUMAN",
+     "workflow.acceptance.assignee"
+    ]
+   ]
+  },
+  {
+   "name": "実装の新しい試行に古いレビュー承認を流用する",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "attempt"
+     ],
+     2
+    ],
+    [
+     [
+      "workflow",
+      "implement",
+      "artifactRefs"
+     ],
+     [
+      {
+       "repo": "project_template",
+       "commit": "abcdef0"
+      }
+     ]
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_COMPLETION",
+     "workflow.implement.status"
+    ]
+   ]
+  },
+  {
+   "name": "要件の版はそのままで完了した成果物を差し替える",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "artifactRefs"
+     ],
+     [
+      {
+       "repo": "project_template",
+       "commit": "abcdef0"
+      }
+     ]
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_COMPLETION",
+     "workflow.implement.artifactRefs"
+    ]
+   ]
+  },
+  {
+   "name": "要件の版を上げたのに計画だけ古い",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "requirementRevision"
+     ],
+     2
+    ],
+    [
+     [
+      "workflow",
+      "implement",
+      "inputRevision"
+     ],
+     2
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_STALE",
+     "workflow.plan.inputRevision"
+    ]
+   ]
+  },
+  {
+   "name": "要件の版を上げたのに実装が古い計画を受けている",
+   "base": "v2-requirement-revised.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "inputSeq"
+     ],
+     2
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_INPUT",
+     "workflow.implement.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "要件の版を上げたのに実装が古い版を対象にしている",
+   "base": "v2-requirement-revised.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "inputRevision"
+     ],
+     1
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_STALE",
+     "workflow.implement.inputRevision"
+    ]
+   ]
+  },
+  {
+   "name": "やり直す前の実装をレビューで承認している",
+   "base": "v2-reaccepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "inputSeq"
+     ],
+     3
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_INPUT",
+     "workflow.review.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "新しいレビューに対して古い受入",
+   "base": "v2-reaccepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "acceptance",
+      "inputSeq"
+     ],
+     4
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_INPUT",
+     "workflow.acceptance.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "古い版に対するレビュー承認",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "requirementRevision"
+     ],
+     2
+    ],
+    [
+     [
+      "workflow",
+      "acceptance",
+      "inputRevision"
+     ],
+     2
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_STALE",
+     "workflow.review.inputRevision"
+    ]
+   ]
+  },
+  {
+   "name": "入力版が要件の版より新しい",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "inputRevision"
+     ],
+     3
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_STALE",
+     "workflow.implement.inputRevision"
+    ]
+   ]
+  },
+  {
+   "name": "inputSeq が存在しない履歴を指す",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "inputSeq"
+     ],
+     99
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_INPUT",
+     "workflow.implement.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "plan に inputSeq がある",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "inputSeq"
+     ],
+     1
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_INPUT",
+     "workflow.plan.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "waiting の工程に inputSeq がある",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement",
+      "inputSeq"
+     ],
+     1
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_INPUT",
+     "workflow.implement.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "通常のタスクに legacy_import が混ざっている",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "outcome"
+     ],
+     "legacy_import"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "completedBy"
+     ],
+     null
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "completedAt"
+     ],
+     null
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "inputRevision"
+     ],
+     null
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "workflow.review.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "通常のタスクの途中に移行の記録を足す",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "history",
+      3,
+      "event"
+     ],
+     "legacy_import"
+    ],
+    [
+     [
+      "history",
+      3,
+      "outcome"
+     ],
+     "legacy_import"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "history[3].event"
+    ]
+   ]
+  },
+  {
+   "name": "移行の記録と違う工程に legacy_import",
+   "base": "v2-legacy-open.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "phase"
+     ],
+     "implement"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "workflow.plan.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "移行の記録と違う試行に legacy_import",
+   "base": "v2-legacy-open.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "attempt"
+     ],
+     2
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "workflow.plan.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "移行以外の出来事に legacy_import の結果",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "history",
+      2,
+      "outcome"
+     ],
+     "legacy_import"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "history[2].outcome"
+    ]
+   ]
+  },
+  {
+   "name": "旧 done の移行で承認を捏造した",
+   "base": "v2-closed-legacy.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "acceptance",
+      "outcome"
+     ],
+     "approved"
+    ],
+    [
+     [
+      "workflow",
+      "acceptance",
+      "completedBy"
+     ],
+     "human/saiki"
+    ],
+    [
+     [
+      "workflow",
+      "acceptance",
+      "completedAt"
+     ],
+     "2026-10-05"
+    ],
+    [
+     [
+      "workflow",
+      "acceptance",
+      "inputRevision"
+     ],
+     1
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "workflow.acceptance.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "承認されずに accepted で閉じた",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "acceptance",
+      "outcome"
+     ],
+     "legacy_import"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_CLOSED",
+     "workflow.acceptance.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "閉じたのに工程が残っている",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "phase"
+     ],
+     "acceptance"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_CLOSED",
+     "phase"
+    ]
+   ]
+  },
+  {
+   "name": "閉じたのに閉じた日が無い",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "completedAt"
+     ],
+     null
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_CLOSED",
+     "completedAt"
+    ]
+   ]
+  },
+  {
+   "name": "open なのに閉じた日がある",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "completedAt"
+     ],
+     "2026-09-28"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_CLOSED",
+     "completedAt"
+    ]
+   ]
+  },
+  {
+   "name": "履歴が自分を参照している",
+   "base": "v2-review-returned.md",
+   "set": [
+    [
+     [
+      "history",
+      5,
+      "refersTo"
+     ],
+     6
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_REF",
+     "history[5].refersTo"
+    ]
+   ]
+  },
+  {
+   "name": "履歴が後ろを参照している",
+   "base": "v2-review-returned.md",
+   "set": [
+    [
+     [
+      "history",
+      4,
+      "refersTo"
+     ],
+     6
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_REF",
+     "history[4].refersTo"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の seq が飛んでいる",
+   "base": "v2-review-returned.md",
+   "set": [
+    [
+     [
+      "history",
+      2,
+      "seq"
+     ],
+     9
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history[2].seq"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の日時が戻っている",
+   "base": "v2-review-returned.md",
+   "set": [
+    [
+     [
+      "history",
+      3,
+      "at"
+     ],
+     "2026-09-01T00:00:00Z"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history[3].at"
+    ]
+   ]
+  },
+  {
+   "name": "タイムゾーンを考えると日時が戻っている (文字列では後)",
+   "base": "v2-closed-accepted.md",
+   "set": [
+    [
+     [
+      "history",
+      4,
+      "at"
+     ],
+     "2026-10-01T09:30:00+09:00"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history[4].at"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の試行回数が現在より大きい",
+   "base": "v2-review-returned.md",
+   "set": [
+    [
+     [
+      "history",
+      5,
+      "attempt"
+     ],
+     3
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ATTEMPT",
+     "history[5].attempt"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の試行回数が戻っている",
+   "base": "v2-review-returned.md",
+   "set": [
+    [
+     [
+      "history",
+      3,
+      "attempt"
+     ],
+     2
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ATTEMPT",
+     "history[4].attempt"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の最初が作成ではない",
+   "base": "v2-new.md",
+   "set": [
+    [
+     [
+      "history",
+      0,
+      "event"
+     ],
+     "claim"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history[0].event"
+    ]
+   ]
+  }
+ ]
+}

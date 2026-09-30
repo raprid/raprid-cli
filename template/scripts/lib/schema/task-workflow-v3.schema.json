@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raprid.dev/schema/task-workflow-v3.schema.json",
+  "title": "raprid 種別と共通工程を持つタスク (workflowVersion 3) の frontmatter",
+  "description": "構造 (型・必須・列挙・書式) の契約。工程の順序・職務分離・入力版・前工程の完了との対応 (inputSeq)・移行の例外 (legacy_import)・履歴の参照など項目をまたぐ規則は scripts/lib/workflow.ts の validateTaskV3 が検証する。値の無い項目は null (YAML では空欄)、一覧は配列 ([] を含む) で表す。未知の項目 (test など) は許して保持する。v2 との違いは、種別 type (research / implementation) が必須になり、工程が種別によらず共通の plan / execute / review / acceptance になったこと (v2 の implement は受け付けない)。",
+  "type": "object",
+  "required": [
+    "id",
+    "workflowVersion",
+    "type",
+    "status",
+    "phase",
+    "requirementRevision",
+    "createdAt",
+    "updatedAt",
+    "completedAt",
+    "closureReason",
+    "requestedBy",
+    "createdBy",
+    "blockedBy",
+    "relatedTasks",
+    "workflow",
+    "history"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^T-[0-9]{3,}$"
+    },
+    "workflowVersion": {
+      "const": 3
+    },
+    "type": {
+      "description": "種別。調査 (research) と実装 (implementation)。search・implement などの別名は受け付けない",
+      "enum": [
+        "research",
+        "implementation"
+      ]
+    },
+    "status": {
+      "enum": [
+        "open",
+        "closed"
+      ]
+    },
+    "phase": {
+      "enum": [
+        "plan",
+        "execute",
+        "review",
+        "acceptance",
+        null
+      ]
+    },
+    "requirementRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "createdAt": {
+      "$ref": "#/$defs/date"
+    },
+    "updatedAt": {
+      "$ref": "#/$defs/date"
+    },
+    "completedAt": {
+      "$ref": "#/$defs/nullableDate"
+    },
+    "closureReason": {
+      "enum": [
+        "accepted",
+        "legacy_done",
+        null
+      ]
+    },
+    "requestedBy": {
+      "$ref": "#/$defs/nullableActor"
+    },
+    "createdBy": {
+      "$ref": "#/$defs/nullableActor"
+    },
+    "blockedBy": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/line"
+      }
+    },
+    "relatedTasks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^task/(?:[A-Za-z0-9][A-Za-z0-9._-]*/)?T-[0-9]{3,}$"
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "required": [
+        "plan",
+        "execute",
+        "review",
+        "acceptance"
+      ],
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/phase"
+        },
+        "execute": {
+          "$ref": "#/$defs/phase"
+        },
+        "review": {
+          "$ref": "#/$defs/phase"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/phase"
+        }
+      },
+      "additionalProperties": false
+    },
+    "history": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/historyEntry"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "nullableDate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/date"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$",
+      "description": "タイムゾーン付きの日時 (ISO 8601)。新しく書くときは UTC (Z)。比べるときは時刻として比べる"
+    },
+    "actor": {
+      "type": "string",
+      "pattern": "^(human|agent)/[a-z0-9][a-z0-9._-]*$"
+    },
+    "nullableActor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/actor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "line": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\r\\n]*\\S[^\\r\\n]*$"
+    },
+    "nullableLine": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[^\\r\\n]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullablePositive": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "phaseName": {
+      "enum": [
+        "plan",
+        "execute",
+        "review",
+        "acceptance"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "completed",
+        "approved",
+        "changes_requested",
+        "legacy_import",
+        null
+      ]
+    },
+    "artifactRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?:(?!\\.{1,2}(?:/|$))[^/]+)(?:/(?!\\.{1,2}(?:/|$))[^/]+)*$"
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "required": [
+            "commit"
+          ]
+        }
+      ],
+      "dependentRequired": {
+        "commit": [
+          "repo"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "phase": {
+      "type": "object",
+      "required": [
+        "status",
+        "attempt",
+        "assignee",
+        "completedBy",
+        "completedAt",
+        "outcome",
+        "inputRevision",
+        "inputSeq",
+        "artifactRefs"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "waiting",
+            "ready",
+            "progress",
+            "pending",
+            "done"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "assignee": {
+          "$ref": "#/$defs/nullableActor"
+        },
+        "completedBy": {
+          "$ref": "#/$defs/nullableActor"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/nullableDate"
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "inputRevision": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "inputSeq": {
+          "$ref": "#/$defs/nullablePositive",
+          "description": "受け取った前工程の完了の履歴 (history の seq)"
+        },
+        "artifactRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "historyEntry": {
+      "type": "object",
+      "required": [
+        "seq",
+        "at",
+        "actor",
+        "event",
+        "phase",
+        "attempt",
+        "inputRevision",
+        "outcome",
+        "from",
+        "to",
+        "reason",
+        "refersTo",
+        "refs"
+      ],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "at": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
+        "event": {
+          "enum": [
+            "create",
+            "assign",
+            "claim",
+            "block",
+            "resume",
+            "complete",
+            "decide",
+            "reopen",
+            "revise",
+            "legacy_import"
+          ]
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/phaseName"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempt": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "inputRevision": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "from": {
+          "$ref": "#/$defs/nullableLine"
+        },
+        "to": {
+          "$ref": "#/$defs/nullableLine"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableLine"
+        },
+        "refersTo": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

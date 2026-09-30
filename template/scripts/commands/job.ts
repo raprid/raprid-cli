@@ -4,20 +4,23 @@ import { parse } from "../lib/args.ts";
 import { CliError, UsageError } from "../lib/errors.ts";
 import { exists, isDirectory, tempPath } from "../lib/fsutil.ts";
 import { Job } from "../lib/jobs.ts";
-import { issuesOf, jobJson, printJson, schemaVersion } from "../lib/query.ts";
+import { assertCompatible, issuesOf, jobJson, parseSchemaVersion, printJson } from "../lib/query.ts";
 import { Collector } from "../lib/records.ts";
 import { projectRoot, templatesDir } from "../lib/root.ts";
 import { sanitize } from "../lib/text.ts";
 import { migrate, usage as migrateUsage } from "./migrate.ts";
+import { migrateWorkflow, usage as migrateWorkflowUsage } from "./migrate-workflow.ts";
 
 export const usage = `使い方:
   raprid job create <案件名>
-  raprid job list [--search <文字列>] [--json]
+  raprid job list [--search <文字列>] [--json [--schema-version 2|3]]
   raprid job migrate [--dry-run | --apply [--plan <計画ハッシュ>] | --restore <移行ID>]
+  raprid job migrate-workflow --map <対応表> [--dry-run | --apply --plan <計画ハッシュ>] | --restore <移行ID>
 
 create   scripts/templates/job/ から jobs/<案件名>/ を作る (既存の案件は上書きしない)
 list     jobs/ 配下の案件を名前順に表示する (--search で名前の部分一致、--json で件数・診断付きの JSON)
 migrate  旧構成 (job/<案件名>/list/ など) を jobs/ の構成へ移す。詳細は raprid job migrate --help
+migrate-workflow  旧形式・workflowVersion 2 のタスクを workflowVersion 3 (種別と工程) へ移す。詳細は raprid job migrate-workflow --help
 
 例:
   raprid job create PROJ-123
@@ -50,8 +53,9 @@ function create(argv: string[]): void {
 }
 
 function list(argv: string[]): void {
-  const { positionals, values } = parse(argv, { json: { type: "boolean" }, search: { type: "string" } }, usage);
+  const { positionals, values } = parse(argv, { json: { type: "boolean" }, search: { type: "string" }, "schema-version": { type: "string" } }, usage);
   if (positionals.length !== 0) throw new UsageError(usage);
+  const version = parseSchemaVersion(values["schema-version"]);
   if (values.search !== undefined && values.search.trim() === "") throw new UsageError("--search には空でない文字列を指定してください");
   const needle = values.search?.toLowerCase();
   const collector = new Collector(projectRoot());
@@ -61,8 +65,10 @@ function list(argv: string[]): void {
     // 件数と診断のために案件の中身も読む (表示は名前だけなので、通常の一覧では読まない)
     const datas = all.map((job) => collector.job(job));
     const names = new Set(shown.map((job) => job.name));
+    // schemaVersion 1 の件数 (byStatus) は旧形式の状態だけ。工程型のタスクがあれば止める。v4 のタスクがあれば 1・2 も止める (T-022)
+    assertCompatible(datas.flatMap((data) => data.tasks.map((entry) => entry.record)), version);
     printJson({
-      schemaVersion,
+      schemaVersion: version,
       kind: "job",
       items: datas.filter((data) => names.has(data.job.name)).map((data) => jobJson(data.record)),
       counts: { total: all.length, shown: shown.length, byStatus: {} },
@@ -91,6 +97,9 @@ export function run(argv: string[]): void {
   } else if (command === "migrate") {
     if (rest.includes("--help") || rest.includes("-h")) console.log(migrateUsage);
     else migrate(rest);
+  } else if (command === "migrate-workflow") {
+    if (rest.includes("--help") || rest.includes("-h")) console.log(migrateWorkflowUsage);
+    else migrateWorkflow(rest);
   } else {
     throw new UsageError(`不明なコマンド: job ${command}\n${usage}`);
   }

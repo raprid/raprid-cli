@@ -1,0 +1,526 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raprid.dev/schema/task-workflow-v4.schema.json",
+  "title": "raprid AI 工程と人の判断記録を別の軸に持つタスク (workflowVersion 4) の frontmatter",
+  "description": "構造 (型・必須・列挙・書式) の契約。工程の順序・人の確認待ち (タスクの pending) と工程の外部の待ちの整合・approval と blockedBy の対応・提出と承認の履歴・職務分離・移行の例外など項目をまたぐ規則は scripts/lib/workflow.ts の validateTaskV4 が、判断記録 (decisions/<工程>-<試行>.md) との照合は scripts/lib/decision.ts の checkTaskDecisions が検証する。v3 との違い: 工程は plan / execute / review の 3 つ (acceptance は無い。人の承認は判断記録)、status に pending (人の確認待ち) を足す、plan・review の記録に approval (判断記録の ID / legacy_unverified / null) を足す、工程の結果は completed / legacy_import、closureReason は approved / legacy_done、history の出来事に send_back / approve / reject / supersede / migrate を足す。移行元 (最後の migrate より前) の履歴には v3 の decide・acceptance・approved / changes_requested が残るので、history の列挙にはそれらを含める (位置の規則は検証器)。approvers・migratedFrom は任意。未知の項目 (test など) は許して保持する。",
+  "type": "object",
+  "required": [
+    "id",
+    "workflowVersion",
+    "type",
+    "status",
+    "phase",
+    "requirementRevision",
+    "createdAt",
+    "updatedAt",
+    "completedAt",
+    "closureReason",
+    "requestedBy",
+    "createdBy",
+    "blockedBy",
+    "relatedTasks",
+    "workflow",
+    "history"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^T-[0-9]{3,}$"
+    },
+    "workflowVersion": {
+      "const": 4
+    },
+    "type": {
+      "description": "種別。調査 (research) と実装 (implementation)",
+      "enum": [
+        "research",
+        "implementation"
+      ]
+    },
+    "status": {
+      "description": "タスク全体の軸。pending = 人の確認待ち (plan・review の提出の後)",
+      "enum": [
+        "open",
+        "pending",
+        "closed"
+      ]
+    },
+    "phase": {
+      "description": "今の工程。pending の間は提出した工程 (plan か review) を指したまま。closed は null",
+      "enum": [
+        "plan",
+        "execute",
+        "review",
+        null
+      ]
+    },
+    "requirementRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "createdAt": {
+      "$ref": "#/$defs/date"
+    },
+    "updatedAt": {
+      "$ref": "#/$defs/date"
+    },
+    "completedAt": {
+      "$ref": "#/$defs/nullableDate"
+    },
+    "closureReason": {
+      "enum": [
+        "approved",
+        "legacy_done",
+        null
+      ]
+    },
+    "requestedBy": {
+      "$ref": "#/$defs/nullableActor"
+    },
+    "createdBy": {
+      "$ref": "#/$defs/nullableActor"
+    },
+    "blockedBy": {
+      "description": "外部の待ち (qa/…・task/…・other: …) か、判断記録の待ち approval/<工程>-<試行> (1 件だけ)。どちらか一方だけ (検証器)",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/line"
+      }
+    },
+    "relatedTasks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^task/(?:[A-Za-z0-9][A-Za-z0-9._-]*/)?T-[0-9]{3,}$"
+      }
+    },
+    "approvers": {
+      "description": "判断記録を作るときの初期の担当 (人だけ)。無ければ未割当",
+      "type": "object",
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/nullableHuman"
+        },
+        "review": {
+          "$ref": "#/$defs/nullableHuman"
+        }
+      },
+      "additionalProperties": false
+    },
+    "workflow": {
+      "type": "object",
+      "required": [
+        "plan",
+        "execute",
+        "review"
+      ],
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/approvalPhase"
+        },
+        "execute": {
+          "$ref": "#/$defs/phase"
+        },
+        "review": {
+          "$ref": "#/$defs/approvalPhase"
+        }
+      },
+      "additionalProperties": false
+    },
+    "history": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/historyEntry"
+      }
+    },
+    "migratedFrom": {
+      "description": "移行した元の版と、v4 に写せない元の記録 (v3 の workflow.acceptance など)",
+      "type": "object",
+      "required": [
+        "workflowVersion"
+      ],
+      "properties": {
+        "workflowVersion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "nullableDate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/date"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$",
+      "description": "タイムゾーン付きの日時 (ISO 8601)。新しく書くときは UTC (Z)。比べるときは時刻として比べる"
+    },
+    "actor": {
+      "type": "string",
+      "pattern": "^(human|agent)/[a-z0-9][a-z0-9._-]*$"
+    },
+    "nullableActor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/actor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableHuman": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^human/[a-z0-9][a-z0-9._-]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "line": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\r\\n]*\\S[^\\r\\n]*$"
+    },
+    "nullableLine": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[^\\r\\n]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullablePositive": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "phaseName": {
+      "enum": [
+        "plan",
+        "execute",
+        "review"
+      ]
+    },
+    "outcome": {
+      "description": "工程の結果。人の判断 (approved / rejected) は判断記録の outcome",
+      "enum": [
+        "completed",
+        "legacy_import",
+        null
+      ]
+    },
+    "approval": {
+      "description": "この試行の判断記録の ID (<工程>-<試行>)、legacy_unverified (移行で判断記録が無い)、null (未提出)",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(plan|review)-[1-9][0-9]*$"
+        },
+        {
+          "const": "legacy_unverified"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "artifactRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?:(?!\\.{1,2}(?:/|$))[^/]+)(?:/(?!\\.{1,2}(?:/|$))[^/]+)*$"
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "required": [
+            "commit"
+          ]
+        }
+      ],
+      "dependentRequired": {
+        "commit": [
+          "repo"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "phase": {
+      "description": "execute の記録。approval は持たない",
+      "type": "object",
+      "required": [
+        "status",
+        "attempt",
+        "assignee",
+        "completedBy",
+        "completedAt",
+        "outcome",
+        "inputRevision",
+        "inputSeq",
+        "artifactRefs"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "waiting",
+            "ready",
+            "progress",
+            "pending",
+            "done"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "assignee": {
+          "$ref": "#/$defs/nullableActor"
+        },
+        "completedBy": {
+          "$ref": "#/$defs/nullableActor"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/nullableDate"
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "inputRevision": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "inputSeq": {
+          "$ref": "#/$defs/nullablePositive",
+          "description": "受け取った前工程の完了の履歴 (history の seq)。execute は人が承認した plan の完了"
+        },
+        "artifactRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
+        }
+      },
+      "not": {
+        "required": [
+          "approval"
+        ]
+      },
+      "additionalProperties": true
+    },
+    "approvalPhase": {
+      "description": "plan・review の記録。approval を持つ",
+      "type": "object",
+      "required": [
+        "status",
+        "attempt",
+        "assignee",
+        "completedBy",
+        "completedAt",
+        "outcome",
+        "inputRevision",
+        "inputSeq",
+        "artifactRefs",
+        "approval"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "waiting",
+            "ready",
+            "progress",
+            "pending",
+            "done"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "assignee": {
+          "$ref": "#/$defs/nullableActor"
+        },
+        "completedBy": {
+          "$ref": "#/$defs/nullableActor"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/nullableDate"
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "inputRevision": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "inputSeq": {
+          "$ref": "#/$defs/nullablePositive",
+          "description": "受け取った前工程の完了の履歴 (history の seq)。execute は人が承認した plan の完了"
+        },
+        "artifactRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        }
+      },
+      "additionalProperties": true
+    },
+    "historyEntry": {
+      "type": "object",
+      "required": [
+        "seq",
+        "at",
+        "actor",
+        "event",
+        "phase",
+        "attempt",
+        "inputRevision",
+        "outcome",
+        "from",
+        "to",
+        "reason",
+        "refersTo",
+        "refs"
+      ],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "at": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
+        "event": {
+          "description": "v4 の出来事と、移行元 (最後の migrate より前) にだけ残る decide",
+          "enum": [
+            "create",
+            "assign",
+            "claim",
+            "block",
+            "resume",
+            "complete",
+            "send_back",
+            "approve",
+            "reject",
+            "revise",
+            "reopen",
+            "supersede",
+            "migrate",
+            "legacy_import",
+            "decide"
+          ]
+        },
+        "phase": {
+          "description": "v4 の工程と、移行元にだけ残る implement / acceptance",
+          "enum": [
+            "plan",
+            "execute",
+            "review",
+            "implement",
+            "acceptance",
+            null
+          ]
+        },
+        "attempt": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "inputRevision": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "outcome": {
+          "description": "v4 の結果と、移行元にだけ残る approved / changes_requested",
+          "enum": [
+            "completed",
+            "legacy_import",
+            "approved",
+            "changes_requested",
+            null
+          ]
+        },
+        "from": {
+          "$ref": "#/$defs/nullableLine"
+        },
+        "to": {
+          "$ref": "#/$defs/nullableLine"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableLine"
+        },
+        "refersTo": {
+          "$ref": "#/$defs/nullablePositive"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

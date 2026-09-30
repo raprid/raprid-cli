@@ -65,7 +65,7 @@ test("一覧の JSON と ui snapshot を委譲し、stdout の JSON をそのま
   assert.equal(failed.status, 1);
   assert.equal(JSON.parse(failed.stdout).error.code, "JOB_NOT_FOUND");
   const capabilities = spawnSync(process.execPath, [join(root, "scripts", "cli.ts"), "--capabilities"], { encoding: "utf8" });
-  assert.deepEqual(JSON.parse(capabilities.stdout), { schemaVersion: 1, capabilities: ["query-v1", "guarded-write-v1"] });
+  assert.deepEqual(JSON.parse(capabilities.stdout), { schemaVersion: 1, capabilities: ["query-v1", "guarded-write-v1", "query-v2", "workflow-v3", "query-v3", "workflow-v4"] });
 });
 
 test("標準出力・標準エラー・終了コードをそのまま返す", () => {

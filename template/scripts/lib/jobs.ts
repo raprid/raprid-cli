@@ -3,7 +3,10 @@ import { join, relative } from "node:path";
 import { CliError, UsageError } from "./errors.ts";
 import { Frontmatter } from "./frontmatter.ts";
 import { isDirectory, isFile, lstatOrUndefined } from "./fsutil.ts";
+import { type RecoveryFs, recoverJournals } from "./journal.ts";
 import { withLock } from "./lock.ts";
+import { hasWorkflowVersion } from "./taskformat.ts";
+import { YamlFrontmatter } from "./yamlfront.ts";
 
 export const taskStatuses = ["todo", "pending", "progress", "done"] as const;
 export const qaStatuses = ["unresolved", "resolved"] as const;
@@ -44,6 +47,16 @@ export function withJobLocks<T>(root: string, names: string[], fn: () => T): T {
   const locks = join(root, "jobs", ".locks");
   const acquire = (index: number): T => (index >= sorted.length ? fn() : withLock(join(locks, sorted[index]), locks, () => acquire(index + 1)));
   return acquire(0);
+}
+
+// 案件の書き込みの操作のロック (契約 7「次にその案件の書き込みの操作をするとき、ロックの中で残った journal を調べる」)。
+// lockNames (待っている QA の案件など、読むだけの案件を含む) を名前順にロックし、その中で writeNames の案件の残った journal を
+// 先に復旧してから fn を実行する。不整合な journal があれば fn を実行せずに止まる (何も変えない)。
+// ロックは withJobLocks の 1 回だけで、復旧はロックを取らない (二重ロック・案件の間のデッドロックを作らない)。
+// 読み取りの操作はこれを使わない (読み取りで復旧・書き込みをしない)
+export function withJobWriteLocks<T>(root: string, lockNames: string[], writeNames: string[], fn: (recovered: string[]) => T, fs?: RecoveryFs): T {
+  const writes = [...new Set(writeNames)].sort(compareText);
+  return withJobLocks(root, [...lockNames, ...writes], () => fn(recoverJournals(writes.map((name) => new Job(root, name).dir), fs)));
 }
 
 export class Job {
@@ -93,10 +106,15 @@ export class Job {
     return kind === "task" ? `../../tasks/${name}` : `../../${name}`;
   }
 
-  // 案件単位で採番・状態変更・詳細追加を直列化する
+  // 案件単位で採番・状態変更・詳細追加を直列化する (復旧はしない。案件を書き換える操作は writeLock を使う)
   lock<T>(fn: () => T): T {
     const locks = join(this.root, "jobs", ".locks");
     return withLock(join(locks, this.name), locks, fn);
+  }
+
+  // 案件を書き換える操作のロック。ロックの中で残った journal を復旧してから fn を実行する (withJobWriteLocks)
+  writeLock<T>(fn: () => T): T {
+    return withJobWriteLocks(this.root, [this.name], [this.name], () => fn());
   }
 
   items(kind: Kind): Item[] {
@@ -198,11 +216,31 @@ export class Item {
   }
 
   idOrEmpty(): string {
-    return isFile(this.index) ? this.tryField("id") : "";
+    if (!isFile(this.index)) return "";
+    return this.tryField("id") || this.nestedId();
   }
 
+  // 旧形式の frontmatter として読めなければ、工程型 (入れ子) の frontmatter から ID を読む。
+  // 同じ案件に旧形式と工程型のタスクがあっても、採番・ID での検索が止まらないように (T-014)
   id(): string {
-    return this.frontmatter().get("id") ?? "";
+    try {
+      return this.frontmatter().get("id") ?? "";
+    } catch (error) {
+      const nested = this.nestedId();
+      if (nested !== "") return nested;
+      // 読めない工程型のタスクは、旧形式の読み取りの誤りではなく工程型として読めないことを示す (旧形式として扱わない)
+      if (hasWorkflowVersion(this.read())) throw new CliError(`工程型のタスクの frontmatter を読み取れません: ${this.job.display(this.index)}`, 1, "WF_READ");
+      throw error;
+    }
+  }
+
+  private nestedId(): string {
+    try {
+      const value = YamlFrontmatter.parse(this.read(), this.job.display(this.index)).get(["id"]);
+      return typeof value === "string" ? value : "";
+    } catch {
+      return "";
+    }
   }
 
   // status/<状態>/<名前> に置かれた索引。リンク以外があれば停止する

@@ -31,7 +31,7 @@ find logs -mindepth 3 -maxdepth 3 -type d -path 'logs/[0-9]*' | sort | tail -3 \
 find jobs -mindepth 1 -maxdepth 1 -type d -not -name '.*' | sort
 
 # タスク・QA の一覧と索引の点検 (状態は各 index.md の frontmatter から読む)
-raprid task list --all --json    # CLI が無ければ pnpm raprid ... / node scripts/cli.ts ...
+raprid task list --all --json --schema-version 2    # CLI が無ければ pnpm raprid ... / node scripts/cli.ts ...
 raprid qa list --all --json
 find jobs -path '*/tasks/*/index.md' | sort
 find jobs -path '*/qa/*/index.md' -not -path '*/qa/status/*' | sort
@@ -58,6 +58,9 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 * **タスク**: `tasks/<名前>/index.md` の frontmatter `id`と`status`、`requestedBy`、`createdBy`を読み、案件内の固定IDを添えて分類する。progress は
   `index.md` の「内容」「完了条件」「結果」を読み、必要なら「詳細」から最新の詳細 md を読む。todo は名前、done は件数でよい。
   pending は `blockedBy` を添える。索引の無い実体も含め、索引との不一致は報告する。
+  工程型 (`workflowVersion: 3`) は `type`・`phase`・工程の状態 (`phaseStatus`: ready / progress / pending)・`assignee` で分類し、
+  ready を旧形式の todo、`status: closed` を done と同じ扱い (件数のみ) にする。closed は `closureReason`
+  (accepted / legacy_done) を区別し、legacy_done を人の受入済みと書かない。受入確認 (`acceptance`) 待ちは担当の人を添える。
 * **QA**: 各 `jobs/<案件名>/qa/<名前>/index.md` のfrontmatter `id`と`status`、`requestedBy`、`createdBy`、`answeredBy`を読み、`status: unresolved`を未解決として扱う。
   「質問内容」を要約し、確認先・依存関係を添える。回答欄の空白やリンク位置で判定しない。
   frontmatter の `job` と親ディレクトリが一致するかも確認する。案件外は `jobs/other/qa/` に置く。
@@ -76,7 +79,8 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 
 | 対象 | 実体 | 状態ディレクトリ |
 | --- | --- | --- |
-| タスク | `jobs/<案件名>/tasks/<名前>/index.md` | `status/{todo,pending,progress,done}/` |
+| タスク (旧形式) | `jobs/<案件名>/tasks/<名前>/index.md` | `status/{todo,pending,progress,done}/` |
+| タスク (工程型) | `jobs/<案件名>/tasks/<名前>/index.md` | `status/<工程>/<工程の状態>/` (`../../../tasks/<名前>`。closed は 0 件) |
 | QA | `jobs/<案件名>/qa/<名前>/index.md` | `qa/status/{unresolved,resolved}/` |
 
 ### 2. MEMORY.md を生成する
@@ -91,7 +95,7 @@ find repos -mindepth 2 -maxdepth 2 -type d -name .worktrees | sort
 * 事実だけを書く。推測や評価は書かない。
 * 各項目に**実ファイルへのパスを添える**。MEMORY.md は詳細の代わりではなくインデックスである。
 * 日付は `YYYY-MM-DD` の絶対表記で書く (「昨日」「先週」と書かない)。
-* 完了済み (`status: done`) のタスクは件数のみ。名前を並べない。
+* 完了済み (`status: done`、工程型の `status: closed`) のタスクは件数のみ。名前を並べない。
 * 不整合を理由にタスクや QA を勝手に修復しない。MEMORY の更新だけを行う。
 * 今回のコード変更・テスト実行と、過去の記録から読んだ結果を区別する。
 

@@ -45,7 +45,8 @@
 │   ├── other/                   # 特定案件に属さないタスク・QA
 │   └── <案件名>/
 │       ├── tasks/<タスク名>/    # タスクの実体 (index.md・詳細 md・assets/)
-│       ├── status/{todo,pending,progress,done}/ # タスクの状態索引
+│       ├── status/{todo,pending,progress,done}/ # タスクの状態索引 (旧形式)
+│       ├── status/<工程>/<工程の状態>/          # 工程型タスクの作業索引 (workflowVersion 3)
 │       ├── qa/<QA名>/           # QA の実体 (index.md・資料)
 │       ├── qa/status/{unresolved,resolved}/     # QA の状態索引
 │       └── assets/              # 案件共通の補助ツール
@@ -164,7 +165,10 @@ node scripts/cli.ts task list PROJ-123 # pnpm も無い環境
 | --- | --- |
 | `raprid job create <案件名>` | `scripts/templates/job/` から `jobs/<案件名>/` を作る。既存の案件は上書きしない |
 | `raprid job migrate [--dry-run \| --apply \| --restore <ID>]` | 旧構成 (`job/`) からの移行。「[旧構成からの移行](#旧構成からの移行)」を参照 |
-| `raprid task add <案件名> <タスク名> <状態> <タイトル> [blockedBy]` | タスクを追加する (固定 ID を採番し、実体と状態索引を作る) |
+| `raprid job migrate-workflow --map <対応表> [--dry-run \| --apply --plan <hash> \| --restore <ID>]` | 旧形式・workflowVersion 2 のタスクを工程型 (workflowVersion 3) へ移す。「[工程型への移行](#工程型への移行)」を参照 |
+| `raprid task add <案件名> <タスク名> --type research\|implementation <タイトル>` | 工程型のタスクを追加する (計画が ready、作業索引を張る)。「[工程型タスク](#工程型タスク-workflowversion-3)」を参照 |
+| `raprid task add <案件名> <タスク名> <状態> <タイトル> [blockedBy]` | 旧形式のタスクを追加する (移行前だけ。固定 ID を採番し、実体と状態索引を作る) |
+| `raprid task claim\|complete\|decide\|block\|resume\|reopen\|assign <案件名> <ID> … --if-match <revision>` | 工程型タスクの工程を進める (`task move` は工程型には使えない) |
 | `raprid job list [--search <文字列>] [--json]` | 案件を名前順に一覧表示する |
 | `raprid task list [<案件名>] [--status <状態,...> \| --all] [--search <文字列>] [--long] [--json]` | 状態別の一覧 (既定は done 以外)。ID の重複・索引の不一致も「要確認」に報告する |
 | `raprid task show <案件名> <ID\|名前> [--json]` | 1 件の詳細 (actor・日付・依存・本文・診断) |
@@ -224,8 +228,9 @@ issues は `code`・`severity` (warning / error)・`job`・`kind`・`id`・`path
 `node scripts/cli.ts --capabilities` は対応機能 (`{"schemaVersion":1,"capabilities":["query-v1","guarded-write-v1"]}`) を返す。
 `ui snapshot` は各ファイルを読み取った内容で一貫させるが、全体を排他したスナップショットではない。
 
-表示幅の計算に使う [string-width](https://github.com/sindresorhus/string-width) は、node_modules が無くても
-`node scripts/cli.ts` で動くよう `scripts/vendor/text-width.mjs` に依存ごと同梱している。
+表示幅の計算に使う [string-width](https://github.com/sindresorhus/string-width) と、ネストした frontmatter
+(工程型タスク) の読み書きに使う [yaml](https://github.com/eemeli/yaml) は、node_modules が無くても
+`node scripts/cli.ts` で動くよう `scripts/vendor/text-width.mjs`・`scripts/vendor/yaml.mjs` に依存ごと同梱している。
 版は `package.json` と `pnpm-lock.yaml` で固定し、`pnpm install && pnpm vendor:build` で同じ内容を再生成できる
 (ライセンスは `scripts/vendor/THIRD_PARTY_LICENSES.txt`)。生成物は直接編集しない。
 
@@ -408,6 +413,42 @@ test:                                         # 対応する手動テストの�
 実行は `/verify-task` か `/run-manual-test` で行い、結果と GIF は
 `tasks/<タスク名>/assets/<実行日>/` に残る。詳細は [docs/feature/README.md](docs/feature/README.md) を参照。
 
+### 工程型タスク (workflowVersion 3)
+
+新しいタスクは工程型で作る。旧形式 (`status: todo/…/done`) は移行までの互換として読み書きできるが、
+移行した後 (`jobs/.raprid-workflow` がある) は旧形式の `task add` を拒否する。
+
+* **種別 (`type`)**: `research` (調査) か `implementation` (実装)。作るときに必ず指定し、後から変えない
+  (目的が変わったら別のタスクを作って `relatedTasks` で関連付ける)。別名 (`search`・`implement` など) は受け付けない
+* **工程**: 種別によらず `plan` (計画) → `execute` (実行) → `review` (レビュー) → `acceptance` (受入確認)。
+  `phase` が今の工程、`workflow.<工程>.status` が工程の状態 (`waiting`・`ready`・`progress`・`pending`・`done`)。
+  タスク全体の `status` は `open` か `closed` で、`closed` は人が受け入れた (`closureReason: accepted`) か、
+  旧形式の done を移した (`legacy_done`) もの
+* **担当と職務分離**: 各工程に担当 (`assignee`) を持つ。`execute` を完了した actor は同じ成果物をレビューできない。
+  受入確認の担当と判定は人 (`human/…`) だけ。AI は受入確認を代行しない
+* **操作**: `claim` (引き受ける)・`complete` (計画・実行の完了)・`decide approved|changes_requested` (レビュー・受入確認の判定)・
+  `block` / `resume` (外部待ち。`blockedBy` が必須)・`reopen --return-to plan|execute` (計画か実行からのやり直し。閉じたタスクにも使う)・`assign` (担当の変更)。
+  単純な状態の指定で工程を飛ばしたり承認を迂回したりはできない (`task move` は拒否する)
+* **引継資料**: `complete` の `--handoff` には「対象・成果物」「実施・検証」「未確認・制約」「次の担当への依頼」の節が必要。
+  `decide` の `--report` はレビュー・受入確認の記録。実装の実行の完了には `--artifact` か `--commit <repo>:<commit>` が必要
+* **revision**: 工程型タスクの更新はすべて `--if-match <revision>` (`task show --json --schema-version 2` の値) が必須。
+  案件のロックの中で読み直し、違えば `REVISION_CONFLICT` で何も変えない
+* **作業索引**: open のタスクは `status/<工程>/<工程の状態>/<タスク名>` に `../../../tasks/<タスク名>` への相対リンクを 1 つ置く
+  (waiting の後続工程は索引にしない)。closed はリンク 0 件が正しい。実体の frontmatter が正で、索引は `ls` 用
+* **履歴 (`history`)**: 操作ごとに `seq` を増やして追記する (日時は UTC)。各工程は受け取った前工程の完了を `inputSeq` で指す
+* **JSON**: 工程型タスクのある案件は `--json --schema-version 2` で読む (付けないと `SCHEMA_V2_REQUIRED`)。
+  `--capabilities` の `query-v2`・`workflow-v3` で対応を確かめる。`--type`・`--phase`・`--assignee` で絞り込める
+
+```sh
+raprid task add acme-site api-setup --type implementation "API を用意する" --requested-by human/saiki --created-by agent/codex
+rev() { raprid task show acme-site "$1" --json --schema-version 2 | jq -r .item.revision; }  # 操作の直前に読む
+raprid task claim acme-site T-001 --actor agent/codex --if-match "$(rev T-001)"
+raprid task complete acme-site T-001 --actor agent/codex --handoff 01-plan.md --if-match "$(rev T-001)"
+raprid task list acme-site --phase review --status ready          # レビュー待ちの一覧
+```
+
+採用仕様は T-011 (工程と職務分離) と T-017 (種別と共通工程) の設計。
+
 ## jobs/<案件名>/qa/ — 質問と回答
 
 質問と回答を案件ごとに1件1ディレクトリで記録する。タスクと同じ方式で、
@@ -502,6 +543,60 @@ raprid job migrate --restore <移行ID>        # 移行前の状態に戻す
 * 旧パス (`job/<案件>/list/<タスク>.md`) を直接読む外部ツールは移行後に動かなくなる。
   例: グローバルの Herdr multi-agent workflow (`~/.config/herdr/multi-agent/`) は旧パスのタスク md を参照するため、
   新構成に対応するまでは `--task` 指定を使わず、依頼文でタスクの `index.md` のパスを渡す。
+
+## 工程型への移行
+
+旧形式 (`status: todo/progress/pending/done`) と workflowVersion 2 のタスクは、`raprid job migrate-workflow` で
+工程型 (workflowVersion 3) へ移す。**種別・工程・担当は推測しない**ので、対応表 (JSON) で指定する。
+
+```json
+{
+  "type": "research",
+  "tasks": {
+    "acme-site/T-001": { "type": "implementation", "phase": "execute", "assignee": "agent/codex" },
+    "acme-site/T-002": { "phase": "plan" }
+  }
+}
+```
+
+```sh
+raprid job migrate-workflow --map map.json --actor human/saiki                       # 計画を表示する (既定。何も変えない)
+raprid job migrate-workflow --map map.json --actor human/saiki --apply --plan <hash> # 表示した計画と一致するときだけ実行する
+raprid job migrate-workflow --restore <移行ID>                                       # 移行前に戻す
+```
+
+* すべての対象に種別が必要 (`type` の一括指定か、`tasks` の個別指定。個別が優先)。旧形式の todo・progress・pending には
+  今の工程 (`phase`)、progress・pending には担当 (`assignee`) が必要 (todo は任意で、無ければ未割当)。
+  足りないもの・規則に合わないものが 1 つでもあれば、すべてを示して何も変えない
+* 旧形式の done は `closed` (`closureReason: legacy_done`) にし、全工程を `legacy_import` (証跡未確認) にする。
+  **人が承認したとは記録しない** (受入確認の完了者は空)。閉じた日は旧 `completedAt` (無ければ移行日とし、履歴に「旧 completedAt 不明」)
+* 旧形式の未完了は `open` にし、指定した工程より前を `legacy_import`、指定した工程を ready (todo)・progress・pending にする
+  (`blockedBy` は保つ)。担当は移行を行う人 (`--actor`) が割り当てた記録にし、担当本人の引受は作らない
+* workflowVersion 2 は工程の参照 (`phase`・`workflow.implement`・`history[].phase`) を意味で `execute` に変え、
+  `seq`・`inputSeq`・試行・actor・結果・成果物・日時は保つ。本文の「implement」の文字は置き換えない
+* 変換した frontmatter は v3 の規則で検証する。本文 (frontmatter の後ろ)・詳細 md・成果物・QA は変えない。
+  frontmatter のコメントは残らない (計画に注意として出る)
+* 旧形式の状態索引を外して作業索引を張る (closed は 0 件)。v2 の `status/implement/…` は `status/execute/…` に移す。
+  別のタスクを指すリンク・リンク以外、書く場所の親のリンク (ディレクトリ以外) があれば止める。索引の張り替え漏れは注意として出し、frontmatter を正として移す
+* 実行中は移行のロック (`.raprid-migrate/.lock`) とすべての案件のロックを取り、ロックの中で計画を作り直す。
+  `.raprid-migrate/`・`jobs/.locks/` やその親がリンクなどディレクトリ以外なら、たどった先に何も書かずに止める。
+  dry-run の後に変わったものがあれば計画ハッシュが変わって止まる
+* 変える index.md は `.raprid-migrate/<移行ID>/backup/` に退避し、索引の前後と権限を `journal.json` に記録する (index.md の権限は umask に依らず元のまま)。
+  途中で失敗したらこの実行で変えたものだけを戻す。移行後の再実行は何も変えない
+* `--restore` は、移行後の内容のままのときだけ戻す。index.md (内容と権限)・作業索引・印 (`jobs/.raprid-workflow`) の変更や削除、
+  外した旧索引の作り直し、退避・記録の書き換えやリンクへの置き換え、書く場所の親ディレクトリ (移行が作った作業索引のディレクトリを含む) の
+  削除・作り直し・リンクへの置き換え、
+  移行後に工程を進めた・タスクを作ったなどの変更が 1 つでもあれば、何も戻さずに止める (退避と記録は残る)。
+  同じ内容で作り直したもの (index.md・索引・印・記録・退避) も変更とみなす (journal にファイル・ディレクトリの dev・inode を記録し、
+  `journal.json` の今の実体を、移行の始めに一度だけ作る `journal.id` に書く)。
+  途中で失敗して戻しきれなかった移行 (`journal.json` の state が `started`) は、書けた範囲だけを戻す。
+  restore 自体が途中で失敗したときは `restoring` と記録し、`--restore` の再実行で残りだけを戻す。
+  途中の状態でも、各 index.md・索引が「移行の前」「移行した後」「restore で戻した後」のどれかの内容で、その時点で記録した実体であることを
+  確かめる (apply・restore は索引を置いた・消した操作と実体をタスクごとに記録して保存する)。退避はすべてのタスクで照合する。
+  どれでもない・記録の無いもの、記録に無い削除があれば止める
+* 移行すると `jobs/.raprid-workflow` を置き、旧形式の `task add` (`--type` なし) を拒否する。印が消えていても、
+  移行済み・途中 (`completed`・`started`・`restoring`) の記録が `.raprid-migrate/` にあれば拒否する。
+  印は restore ですべてのタスクを戻せたときだけ消す
 
 ## repos/ — 関連リポジトリ (submodule)
 

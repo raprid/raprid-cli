@@ -1,7 +1,8 @@
 // TUI の試験で使う snapshot と偽の backend
 
 import type { Backend, WriteResult } from "../src/tui/backend.js";
-import type { Issue, QaRecord, ShowResult, Snapshot, TaskRecord } from "../src/tui/types.js";
+import type { Issue, PhaseRecord, QaRecord, ShowResult, Snapshot, TaskRecord } from "../src/tui/types.js";
+import type { WorkflowStep } from "../src/tui/workflow.js";
 
 export function task(id: string | null, fields: Partial<TaskRecord> = {}): TaskRecord {
   const name = fields.name ?? (id ?? "no-id").toLowerCase();
@@ -23,6 +24,41 @@ export function task(id: string | null, fields: Partial<TaskRecord> = {}): TaskR
     blockedBy: [],
     ...fields,
   };
+}
+
+// 工程型タスク (schemaVersion 2 の項目つき)。phase と phaseStatus・担当から工程ごとの記録を作る
+export function workflowTask(id: string, fields: Partial<TaskRecord> & { phase?: string | null; phaseStatus?: string | null } = {}): TaskRecord {
+  const phase = fields.phase === undefined ? "plan" : fields.phase;
+  const status = fields.status ?? "open";
+  const order = ["plan", "execute", "review", "acceptance"];
+  const index = phase === null ? order.length : order.indexOf(phase);
+  const record = (position: number): PhaseRecord => ({
+    status: status === "closed" || position < index ? "done" : position === index ? (fields.phaseStatus ?? "ready") : "waiting",
+    attempt: 1,
+    assignee: position === index ? (fields.assignee ?? null) : position === 3 ? "human/saiki" : null,
+    completedBy: status === "closed" || position < index ? (position === 1 ? "agent/claude" : position === 3 ? "human/saiki" : "agent/codex") : null,
+    completedAt: status === "closed" || position < index ? "2026-09-29" : null,
+    outcome: status === "closed" || position < index ? (position < 2 ? "completed" : "approved") : null,
+    inputRevision: 1,
+    inputSeq: null,
+    artifactRefs: status === "closed" || position < index ? (position === 1 ? [{ path: "02-handoff.md" }, { repo: "project_template", commit: "873ca38" }] : [{ path: `0${position + 1}.md` }]) : [],
+  });
+  return task(id, {
+    status,
+    workflowVersion: 3,
+    type: "implementation",
+    phase: status === "closed" ? null : phase,
+    phaseStatus: status === "closed" ? null : (fields.phaseStatus ?? "ready"),
+    assignee: fields.assignee ?? null,
+    requirementRevision: 1,
+    closureReason: status === "closed" ? "accepted" : null,
+    relatedTasks: [],
+    workflow: Object.fromEntries(order.map((name, position) => [name, record(position)])),
+    history: [{ seq: 1, at: "2026-09-29T00:00:00Z", actor: "agent/codex", event: "create", phase: "plan", attempt: 1, outcome: null, from: null, to: "ready", reason: null, refersTo: null, refs: [] }],
+    valid: true,
+    readable: true,
+    ...fields,
+  });
 }
 
 export function qa(id: string, fields: Partial<QaRecord> = {}): QaRecord {
@@ -127,6 +163,12 @@ export class FakeBackend implements Backend {
   moveTask(job: string, selector: string, status: string, blockedBy: string[] | undefined, revision: string): Promise<WriteResult> {
     const reply = deferred<WriteResult>();
     this.writeCalls.push({ args: ["moveTask", job, selector, status, blockedBy, revision], reply });
+    return reply.promise;
+  }
+
+  workflowStep(job: string, selector: string, step: WorkflowStep, actor: string, revision: string): Promise<WriteResult> {
+    const reply = deferred<WriteResult>();
+    this.writeCalls.push({ args: ["workflowStep", job, selector, step, actor, revision], reply });
     return reply.promise;
   }
 

@@ -4,7 +4,8 @@ import { handleFormKey, startAction } from "./actions.js";
 import type { EditorState } from "./editor.js";
 import type { DetailState } from "./stores.js";
 import { bodyOf, graphemes, type Line, markdownLines, sanitize } from "./text.js";
-import { type Issue, type ItemRecord, type Kind, type Snapshot, statusOrder } from "./types.js";
+import { type Issue, type ItemRecord, type Kind, type Snapshot, statusOrder, type TaskRecord } from "./types.js";
+import { isWorkflowTask, legacyStatusOf, type StepKind, statusText as workflowStatusText, workflowDetail, type WorkflowStep } from "./workflow.js";
 
 export type Tab = "task" | "qa" | "issues";
 export type Panel = "jobs" | "list" | "detail";
@@ -31,11 +32,14 @@ export interface WriteTarget {
   title: string;
   status: string | null;
   blockedBy: string[];
+  history: number; // 工程型タスクの履歴の件数 (結果が分からない失敗のときに、保存できていたかを確かめる)
+  phase?: string | null; // 工程型タスクの開いた時点の工程
 }
 
 export type WriteRequest =
   | { type: "answer"; target: WriteTarget; answer: string; actor: string }
-  | { type: "move"; target: WriteTarget; status: string; blockedBy: string[] | undefined; actor: string };
+  | { type: "move"; target: WriteTarget; status: string; blockedBy: string[] | undefined; actor: string }
+  | { type: "workflow"; target: WriteTarget; kind: StepKind; step: WorkflowStep; actor: string };
 
 export interface Blocker {
   reference: string;
@@ -74,6 +78,36 @@ export interface MoveForm {
   latest: string[] | undefined;
 }
 
+// 工程型タスクの工程の操作 (m)。操作の選択 → 入力 → 確認 (受入確認は根拠を示して確認欄に印を付ける) → 保存
+export interface StepField {
+  key: "handoff" | "artifacts" | "commits" | "report" | "returnTo" | "reason" | "blockedBy" | "phase" | "assignee";
+  label: string;
+  kind: "line" | "lines" | "choice";
+  required: boolean;
+  editor: EditorState;
+  choices?: string[];
+  choice?: number;
+  hint?: string;
+}
+
+export interface StepForm {
+  kind: "step";
+  stage: "menu" | "edit" | "confirm";
+  target: WriteTarget;
+  record: TaskRecord; // 開いた時点の記録 (受入確認の根拠の表示に使う)
+  steps: StepKind[];
+  index: number; // 操作の一覧の選択
+  step: StepKind | undefined;
+  fields: StepField[];
+  focus: number; // 入力欄の位置。fields.length は「次へ」、fields.length + 1 は「戻る」
+  checked: boolean; // 受入確認の確認欄
+  evidenceScroll: number; // 受入確認の根拠のスクロール位置
+  evidenceSeen: boolean; // 受入確認の根拠を最後まで表示した (印を付けられる)
+  confirmFocus: "ok" | "back";
+  error: string | undefined;
+  latest: string[] | undefined;
+}
+
 export type Mode =
   | { kind: "normal" }
   | { kind: "search"; draft: string; before: string }
@@ -84,10 +118,11 @@ export type Mode =
   | AnswerForm
   | { kind: "answerConfirm"; form: AnswerForm; focus: "ok" | "back" }
   | MoveForm
-  | { kind: "saving"; request: WriteRequest; resume: AnswerForm | MoveForm; exitRequested: boolean }
+  | StepForm
+  | { kind: "saving"; request: WriteRequest; resume: AnswerForm | MoveForm | StepForm; exitRequested: boolean }
   | { kind: "resumeList"; qa: string; tasks: WaitingTask[]; index: number };
 
-const formModes = new Set(["actor", "answer", "answerConfirm", "move", "saving", "resumeList"]);
+const formModes = new Set(["actor", "answer", "answerConfirm", "move", "step", "saving", "resumeList"]);
 
 export function inForm(state: UiState): boolean {
   return formModes.has(state.mode.kind);
@@ -112,9 +147,11 @@ export interface UiState {
   notice: string | undefined;
   actor: string | null; // 更新する人 (human/<識別子>)。--actor か最初の更新時の入力で決め、セッション中だけ保つ
   writable: boolean; // scripts/ が guarded-write-v1 に対応している
+  workflow: boolean; // scripts/ が query-v2・workflow-v3 に対応している (工程型タスクの操作ができる)
+  readyQueue: boolean; // ready の工程だけを出す (w)
 }
 
-export function initialState(job: string | null = null, options: { actor?: string | null; writable?: boolean } = {}): UiState {
+export function initialState(job: string | null = null, options: { actor?: string | null; writable?: boolean; workflow?: boolean } = {}): UiState {
   const empty = { key: null, index: 0 };
   return {
     job,
@@ -130,6 +167,8 @@ export function initialState(job: string | null = null, options: { actor?: strin
     notice: undefined,
     actor: options.actor ?? null,
     writable: options.writable ?? false,
+    workflow: options.workflow ?? false,
+    readyQueue: false,
   };
 }
 
@@ -164,6 +203,11 @@ export function defaultStatuses(kind: Kind): string[] {
   return kind === "task" ? ["progress", "todo", "pending"] : ["unresolved"];
 }
 
+// 工程型タスクは、今の工程の状態を旧形式の状態 (progress・todo・pending・done) に当てはめて絞り込む (closed は done)
+function statusForFilter(record: ItemRecord): string | null {
+  return record.kind === "task" ? legacyStatusOf(record) : record.status;
+}
+
 function visibleStatus(kind: Kind, status: string | null, state: Pick<UiState, "showAll" | "filters">): boolean {
   if (status === null || !statusOrder[kind].includes(status)) return true; // 未知の状態は隠さない
   const filter = state.filters[kind];
@@ -177,7 +221,7 @@ function matches(values: (string | null)[], search: string): boolean {
   return values.some((value) => value !== null && value.toLowerCase().includes(needle));
 }
 
-export function rowsFor(snapshot: Snapshot | undefined, state: Pick<UiState, "job" | "tab" | "search" | "showAll" | "filters">): Row[] {
+export function rowsFor(snapshot: Snapshot | undefined, state: Pick<UiState, "job" | "tab" | "search" | "showAll" | "filters"> & Partial<Pick<UiState, "readyQueue" | "actor">>): Row[] {
   if (!snapshot) return [];
   const inScope = (job: string) => state.job === null || job === state.job;
   if (state.tab === "issues") {
@@ -186,10 +230,19 @@ export function rowsFor(snapshot: Snapshot | undefined, state: Pick<UiState, "jo
       .map((issue) => ({ key: issueKey(issue), issue }));
   }
   const records: ItemRecord[] = state.tab === "task" ? snapshot.tasks : snapshot.qas;
-  return records
-    .filter((record) => inScope(record.job) && visibleStatus(record.kind, record.status, state))
-    .filter((record) => matches([record.id, record.name, record.title, record.kind === "qa" ? record.question : null], state.search))
-    .map((record) => ({ key: recordKey(snapshot, record), record }));
+  const searched = records
+    .filter((record) => inScope(record.job))
+    .filter((record) => matches([record.id, record.name, record.title, record.kind === "qa" ? record.question : null], state.search));
+  if (state.tab === "task" && state.readyQueue) {
+    // ready の一覧: 今の工程が ready の工程型タスク。状態の絞り込み (f・v) には左右されない (R15-2)。担当が自分・未割当のものを先に出す
+    const ready = searched.filter((record) => record.kind === "task" && isWorkflowTask(record) && record.status === "open" && record.phaseStatus === "ready") as TaskRecord[];
+    const rank = (record: TaskRecord) => (record.assignee === state.actor && state.actor !== null ? 0 : record.assignee === null || record.assignee === undefined ? 1 : 2);
+    return ready
+      .map((record, order) => ({ record, order }))
+      .sort((a, b) => rank(a.record) - rank(b.record) || a.order - b.order)
+      .map(({ record }) => ({ key: recordKey(snapshot, record), record }));
+  }
+  return searched.filter((record) => visibleStatus(record.kind, statusForFilter(record), state)).map((record) => ({ key: recordKey(snapshot, record), record }));
 }
 
 export function unresolvedCount(snapshot: Snapshot | undefined, job: string | null): number {
@@ -253,6 +306,8 @@ export interface KeyContext {
   layout: Layout;
   detailHeight: number; // 詳細の表示行数
   detailLength: number; // 詳細の総行数
+  formWidth?: number; // フォームの幅・高さ (受入確認の根拠のスクロールに使う。省略は 80x24)
+  formHeight?: number;
 }
 
 export type Effect = "exit" | "refresh" | { kind: "write"; request: WriteRequest };
@@ -359,6 +414,11 @@ export function handleKey(state: UiState, input: string, key: KeyInput, context:
     const kind = state.tab;
     return done({ ...state, mode: { kind: "filter", index: 0, draft: state.filters[kind] ?? (state.showAll ? [...statusOrder[kind]] : defaultStatuses(kind)) } });
   }
+  if (input === "w") {
+    if (!state.workflow) return done({ ...state, notice: "このプロジェクトの scripts/ は工程型タスク (workflow-v3) に対応していません" });
+    const readyQueue = !state.readyQueue;
+    return done({ ...state, tab: "task", readyQueue, selection: { ...state.selection, task: { key: null, index: 0 } }, notice: readyQueue ? "ready の工程だけを表示します (自分・未割当が上)" : "ready の一覧を閉じました" });
+  }
   if (input === "v") {
     const showAll = !state.showAll;
     return done({ ...state, showAll, notice: showAll ? "完了済みも表示します" : "完了済みを隠します" });
@@ -429,8 +489,9 @@ export function detailLines(row: Row | undefined, detail: DetailState, snapshot:
   const record = row.record!;
   const actor = (value: string | null) => (value === null ? "不明（旧記録）" : sanitize(value));
   const date = (value: string | null) => (value === null ? "-" : sanitize(value));
+  const heading = record.kind === "task" && isWorkflowTask(record) ? workflowStatusText(record) : record.status === null ? "未設定" : sanitize(record.status);
   const lines: Line[] = [
-    { text: `${record.id === null ? "ID未設定" : sanitize(record.id)}  ${record.status === null ? "未設定" : sanitize(record.status)}`, bold: true },
+    { text: `${record.id === null ? "ID未設定" : sanitize(record.id)}  ${heading}`, bold: true },
     { text: sanitize(record.title ?? record.name), bold: true },
     { text: "" },
     { text: `案件    ${sanitize(record.job)}` },
@@ -438,6 +499,7 @@ export function detailLines(row: Row | undefined, detail: DetailState, snapshot:
     { text: `依頼    ${actor(record.requestedBy)}` },
     { text: `記録    ${actor(record.createdBy)}` },
   ];
+  if (record.kind === "task" && isWorkflowTask(record)) lines.push(...workflowDetail(record));
   if (record.kind === "task") {
     lines.push({ text: `日付    作成 ${date(record.createdAt)} / 更新 ${date(record.updatedAt)} / 完了 ${date(record.completedAt)}` });
     lines.push({ text: `待ち    ${record.blockedBy.length > 0 ? record.blockedBy.map((value) => sanitize(value)).join(", ") : "-"}` });

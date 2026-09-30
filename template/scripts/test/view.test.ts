@@ -154,16 +154,17 @@ test("文字列処理: 制御文字の除去と grapheme 境界での折返し�
   assert.deepEqual(clampLines("abcdefghij", undefined, 1, "…"), ["abcdefghij"], "幅の制限が無ければ折り返さない");
 });
 
-test("同梱の text-width.mjs は固定した版から再生成したものと一致する", async (t) => {
-  let bundle: () => Promise<{ code: string; licenses: string }>;
+test("同梱の vendor ファイルは固定した版から再生成したものと一致する", async (t) => {
+  let build: () => Promise<{ files: Record<string, string>; licenses: string }>;
   try {
-    ({ bundleTextWidth: bundle } = await import("../vendor/build.ts"));
+    ({ buildVendor: build } = await import("../vendor/build.ts"));
   } catch {
     t.skip("esbuild が導入されていない (pnpm install で導入する)");
     return;
   }
   const vendor = join(dirname(cli), "vendor");
-  const { code, licenses } = await bundle();
-  assert.equal(readFileSync(join(vendor, "text-width.mjs"), "utf8"), code, "pnpm vendor:build で作り直す");
+  const { files, licenses } = await build();
+  assert.deepEqual(Object.keys(files).sort(), ["text-width.mjs", "yaml.mjs"]);
+  for (const [file, code] of Object.entries(files)) assert.equal(readFileSync(join(vendor, file), "utf8"), code, `${file}: pnpm vendor:build で作り直す`);
   assert.equal(readFileSync(join(vendor, "THIRD_PARTY_LICENSES.txt"), "utf8"), licenses);
 });

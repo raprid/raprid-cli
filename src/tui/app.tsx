@@ -22,19 +22,21 @@ import {
   inForm,
   type WriteRequest,
 } from "./model.js";
-import { applyWriteOutcome, knownRejections, pasteIntoForm, type WriteOutcome, writeConfirmed } from "./actions.js";
+import { applyWriteOutcome, isKnownRejection, pasteIntoForm, type WriteOutcome, writeConfirmed } from "./actions.js";
 import { type Backend, BackendError } from "./backend.js";
 import { FormView, formHints } from "./forms.js";
 import type { DetailStore, SnapshotState, SnapshotStore } from "./stores.js";
 import { type Line, padEnd, sanitize, truncate, width, wrapLines } from "./text.js";
-import { statusOrder } from "./types.js";
+import { statusOrder, type TaskRecord } from "./types.js";
+import { assigneeText, isWorkflowTask, phaseText, statusText as workflowStatusText, typeText } from "./workflow.js";
 
 export interface AppProps {
   snapshots: SnapshotStore;
   details: DetailStore;
   initialJob: string | null;
   projectName: string;
-  writer?: Pick<Backend, "resolveQa" | "moveTask" | "show">; // 更新操作 (guarded-write-v1 に対応しているときだけ渡す)
+  writer?: Pick<Backend, "resolveQa" | "moveTask" | "show" | "workflowStep">; // 更新操作 (guarded-write-v1 に対応しているときだけ渡す)
+  workflow?: boolean; // scripts/ が query-v2・workflow-v3 に対応している (工程型タスクの操作と ready の一覧)
   actor?: string | null;
   columns?: number; // 試験用に端末の大きさを固定する
   rows?: number;
@@ -58,17 +60,30 @@ function fetchStatus(state: SnapshotState): { text: string; color?: string } {
   return { text: `更新 ${time(state.fetchedAt)}${state.loading ? " …" : ""}` };
 }
 
-function rowText(row: Row, idWidth: number, statusWidth: number): string {
+// 工程型タスクがある一覧だけ、種別・工程・担当の列を足す (旧形式だけなら表示を変えない)
+interface Columns {
+  id: number;
+  status: number;
+  workflow: { type: number; phase: number; assignee: number } | undefined;
+}
+
+function rowText(row: Row, columns: Columns): string {
   if (row.issue) {
     const issue = row.issue;
     return `${issue.severity === "error" ? "E" : "W"} ${sanitize(issue.id ?? issue.path)}  ${sanitize(issue.message)}`;
   }
   const record = row.record!;
-  const id = padEnd(record.id === null ? "ID未設定" : sanitize(record.id), idWidth);
-  const status = padEnd(record.status === null ? "未設定" : sanitize(record.status), statusWidth);
+  const id = padEnd(record.id === null ? "ID未設定" : sanitize(record.id), columns.id);
+  const statusValue = record.kind === "task" ? workflowStatusText(record) : record.status === null ? "未設定" : sanitize(record.status);
+  const status = padEnd(statusValue, columns.status);
   const title = sanitize(record.title ?? record.name);
   if (record.kind === "task") {
-    const waiting = record.status === "pending" ? `  待ち: ${record.blockedBy.length > 0 ? record.blockedBy.map((value) => sanitize(value)).join(", ") : "(未記入)"}` : "";
+    const pending = isWorkflowTask(record) ? record.status === "open" && record.phaseStatus === "pending" : record.status === "pending";
+    const waiting = pending ? `  待ち: ${record.blockedBy.length > 0 ? record.blockedBy.map((value) => sanitize(value)).join(", ") : "(未記入)"}` : "";
+    const workflow = columns.workflow;
+    if (workflow) {
+      return `${id} ${padEnd(typeText(record), workflow.type)} ${padEnd(phaseText(record), workflow.phase)} ${status} ${padEnd(assigneeText(record), workflow.assignee)} ${title}${waiting}`;
+    }
     return `${id} ${status} ${title}${waiting}`;
   }
   return `${id} ${status} ${sanitize(record.askTo ?? "未設定")}  ${title}`;
@@ -92,15 +107,21 @@ function ListRows(props: { rows: Row[]; index: number; width: number; height: nu
   const start = Math.min(Math.max(0, index - Math.floor(height / 2)), Math.max(0, rows.length - height));
   const shown = rows.slice(start, start + height);
   const records = shown.filter((row) => row.record).map((row) => row.record!);
-  const idWidth = Math.max(0, ...records.map((record) => width(record.id ?? "ID未設定")));
-  const statusWidth = Math.max(0, ...records.map((record) => width(record.status ?? "未設定")));
+  const tasks = records.filter((record): record is TaskRecord => record.kind === "task");
+  const columns: Columns = {
+    id: Math.max(0, ...records.map((record) => width(record.id ?? "ID未設定"))),
+    status: Math.max(0, ...records.map((record) => width(record.kind === "task" ? workflowStatusText(record) : (record.status ?? "未設定")))),
+    workflow: tasks.some(isWorkflowTask)
+      ? { type: Math.max(...tasks.map((record) => width(typeText(record)))), phase: Math.max(...tasks.map((record) => width(phaseText(record)))), assignee: Math.max(...tasks.map((record) => width(assigneeText(record)))) }
+      : undefined,
+  };
   return (
     <>
       {shown.map((row, offset) => {
         const selected = start + offset === index;
         return (
           <Text key={row.key} inverse={selected} wrap="truncate-end">
-            {truncate(`${selected ? ">" : " "} ${rowText(row, idWidth, statusWidth)}`, props.width)}
+            {truncate(`${selected ? ">" : " "} ${rowText(row, columns)}`, props.width)}
           </Text>
         );
       })}
@@ -172,6 +193,13 @@ const helpLines = [
   "q / Ctrl+C    終了",
 ];
 
+// 工程型タスクに対応した scripts/ のときだけ、工程の操作と ready の一覧の説明を足す
+function helpLinesFor(state: UiState): string[] {
+  if (!state.workflow) return helpLines;
+  const at = helpLines.findIndex((line) => line.startsWith("a / m"));
+  return [...helpLines.slice(0, at), "a / m         QA に回答 / 状態の変更、工程型は工程の操作", "w             ready の工程だけ (自分・未割当が上)", ...helpLines.slice(at + 1)];
+}
+
 function keyHints(state: UiState, panels: Panel[]): string {
   const form = formHints(state);
   if (form) return form;
@@ -186,7 +214,7 @@ function keyHints(state: UiState, panels: Panel[]): string {
       return "Esc / ? で閉じる";
     default:
       if (state.narrowDetail) return "↑↓ PgUp/PgDn スクロール  Esc 一覧へ  q 終了";
-      return `↑↓ 移動  ${panels.length > 1 ? "Tab パネル  " : ""}1-3 種類  Enter 詳細  / 検索  g 案件  f 状態  v 全件  r 更新${state.writable ? "  a 回答  m 状態変更" : ""}  ? ヘルプ  q 終了`;
+      return `↑↓ 移動  ${panels.length > 1 ? "Tab パネル  " : ""}1-3 種類  Enter 詳細  / 検索  g 案件  f 状態  v 全件${state.workflow ? "  w ready" : ""}  r 更新${state.writable ? `  a 回答  m ${state.workflow ? "状態・工程の操作" : "状態変更"}` : ""}  ? ヘルプ  q 終了`;
   }
 }
 
@@ -194,7 +222,7 @@ function filterSummary(state: UiState): string {
   const parts: string[] = [];
   if (state.tab !== "issues") {
     const filter = state.filters[state.tab];
-    parts.push(filter ? `状態: ${filter.join(",")}` : state.showAll ? "全件" : "未完了のみ");
+    parts.push(state.tab === "task" && state.readyQueue ? "ready の工程だけ (w で戻す)" : filter ? `状態: ${filter.join(",")}` : state.showAll ? "全件" : "未完了のみ");
   }
   if (state.search) parts.push(`検索: ${sanitize(state.search)}`);
   return parts.join("  ");
@@ -207,7 +235,7 @@ export function App(props: AppProps) {
   const rows = props.rows ?? size.rows;
   const snap = useSyncExternalStore(props.snapshots.subscribe, props.snapshots.getState);
   const detail = useSyncExternalStore(props.details.subscribe, props.details.getState);
-  const [state, setState] = useState(() => initialState(props.initialJob, { actor: props.actor ?? null, writable: props.writer !== undefined }));
+  const [state, setState] = useState(() => initialState(props.initialJob, { actor: props.actor ?? null, writable: props.writer !== undefined, workflow: props.workflow ?? false }));
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -215,9 +243,9 @@ export function App(props: AppProps) {
   const panels = panelsFor(layout, state);
   const snapshot = snap.snapshot;
   const jobs = useMemo(() => (snapshot?.jobs ?? []).map((job) => job.name), [snapshot]);
-  const filterKey = `${state.job}\u0000${state.search}\u0000${state.showAll}\u0000${state.filters.task}\u0000${state.filters.qa}`;
+  const filterKey = `${state.job}\u0000${state.search}\u0000${state.showAll}\u0000${state.filters.task}\u0000${state.filters.qa}\u0000${state.readyQueue}\u0000${state.actor}`;
   const rowsByTab = useMemo(() => {
-    const base = { job: state.job, search: state.search, showAll: state.showAll, filters: state.filters };
+    const base = { job: state.job, search: state.search, showAll: state.showAll, filters: state.filters, readyQueue: state.readyQueue, actor: state.actor };
     return { task: rowsFor(snapshot, { ...base, tab: "task" }), qa: rowsFor(snapshot, { ...base, tab: "qa" }), issues: rowsFor(snapshot, { ...base, tab: "issues" }) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, filterKey]);
@@ -273,7 +301,9 @@ export function App(props: AppProps) {
       const result =
         request.type === "answer"
           ? await writer.resolveQa(target.job, target.name, request.answer, request.actor, target.revision)
-          : await writer.moveTask(target.job, target.name, request.status, request.blockedBy, target.revision);
+          : request.type === "workflow"
+            ? await writer.workflowStep(target.job, target.name, request.step, request.actor, target.revision)
+            : await writer.moveTask(target.job, target.name, request.status, request.blockedBy, target.revision);
       outcome = { ok: true, result };
     } catch (error) {
       const code = error instanceof BackendError ? error.code : "FAILED";
@@ -284,7 +314,7 @@ export function App(props: AppProps) {
       } catch {
         latest = undefined;
       }
-      if (!knownRejections.has(code) && latest && writeConfirmed(request, latest)) outcome = { ok: true, result: { schemaVersion: 1, ok: true, item: latest, issues: [] }, confirmed: true };
+      if (!isKnownRejection(code) && latest && writeConfirmed(request, latest)) outcome = { ok: true, result: { schemaVersion: request.type === "workflow" ? 2 : 1, ok: true, item: latest, issues: [] }, confirmed: true };
       else outcome = { ok: false, code, message, latest };
     }
     const result = applyWriteOutcome(stateRef.current, outcome, props.snapshots.getState().snapshot);
@@ -302,7 +332,7 @@ export function App(props: AppProps) {
   };
 
   useInput((input, key) => {
-    const result = handleKey(stateRef.current, input, key, { rows: list, selected, snapshot, jobs, layout, detailHeight: innerHeight, detailLength: lines.length });
+    const result = handleKey(stateRef.current, input, key, { rows: list, selected, snapshot, jobs, layout, detailHeight: innerHeight, detailLength: lines.length, formWidth: columns, formHeight: bodyHeight });
     apply(result.state, result.effects);
   });
 
@@ -345,7 +375,7 @@ export function App(props: AppProps) {
   if (inForm(state)) {
     body = <FormView state={state} snapshot={snapshot} width={columns} height={bodyHeight} />;
   } else if (state.mode.kind === "help") {
-    body = <Dialog title="操作" width={Math.min(columns, 60)} height={bodyHeight} lines={helpLines.map((text) => ({ text }))} />;
+    body = <Dialog title="操作" width={Math.min(columns, 60)} height={bodyHeight} lines={helpLinesFor(state).map((text) => ({ text }))} />;
   } else if (state.mode.kind === "jobPicker") {
     const mode = state.mode;
     const options = ["全案件", ...jobs];

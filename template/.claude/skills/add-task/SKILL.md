@@ -1,6 +1,6 @@
 ---
 name: add-task
-description: jobs/ 配下に案件とタスクを追加する。会話中の調査結果や課題票から内容・完了条件・初期状態を整理し、実体と相対リンクを作る。タスクの新規登録を頼まれたときに使う。既存タスクの状態変更は task-transition を使う。
+description: jobs/ 配下に案件とタスクを追加する。会話中の調査結果や課題票から種別・内容・完了条件を整理し、工程型タスク (workflowVersion 3) の実体と作業索引を作る。タスクの新規登録を頼まれたときに使う。既存タスクの工程を進めるのは task-transition を使う。
 ---
 
 # add-task
@@ -11,14 +11,17 @@ description: jobs/ 配下に案件とタスクを追加する。会話中の調�
 会話の材料を使って進め、対象や完了条件を決めるために不足する情報だけ確認する。
 
 タスクの実体はディレクトリ `tasks/<タスク名>/` で、要約を `index.md`、フェーズや調査ごとの記録を
-詳細 md (`01-<詳細名>.md` …) に置く。`status/` 内の `todo/` `pending/` `progress/` `done/` には
-`../../tasks/<タスク名>` を指す**相対シンボリックリンク**を置く。
-状態の正は実体の frontmatter `status` で、リンクは索引として使う (詳細は [README.md](../../../README.md))。
+詳細 md (`01-<詳細名>.md` …) に置く。**新しいタスクは工程型 (workflowVersion 3)** で作る。
+種別 (`research` 調査 / `implementation` 実装) を必ず決め、工程は `plan` → `execute` → `review` → `acceptance`。
+作ると計画 (`plan`) が `ready` になり、作業索引 `status/plan/ready/<タスク名>` に `../../../tasks/<タスク名>` への
+**相対シンボリックリンク**が張られる。状態の正は実体の frontmatter で、リンクは索引として使う (詳細は [README.md](../../../README.md) の「工程型タスク」)。
 各実体には案件内で固定の`T-001`形式の`id`を持たせる。既存IDの最大値＋1を使う。
 実体は削除せず、廃止時も記録として残す運用とし、欠番は埋めない。
-このスキルが行うのは**初期登録** (実体の作成 + `status/{todo,pending,progress}/` のいずれかへのリンク) まで。
-実体と索引は `raprid task add` で作る (CLI が無ければ `pnpm raprid task add` か `node scripts/cli.ts task add`)。
-以降の状態遷移は task-transition スキルに任せる。
+このスキルが行うのは**初期登録** (実体の作成 + 作業索引) まで。
+実体と索引は `raprid task add --type` で作る (CLI が無ければ `pnpm raprid task add` か `node scripts/cli.ts task add`)。
+引受・完了・待ちなど以降の工程の操作は task-transition スキルに任せる。
+工程型へ移行する前のプロジェクト (`jobs/.raprid-workflow` が無く、旧形式のタスクがある) で旧形式を続けるよう
+頼まれた場合だけ、`--type` を付けない旧形式の `task add <案件> <名前> <状態> <タイトル>` を使う。
 
 ## このスキルの肝
 
@@ -69,7 +72,8 @@ raprid job create <案件名>
 | 聞くこと | 選択肢の作り方 |
 | --- | --- |
 | どの案件か | 既存案件の一覧 + 「新規作成」 |
-| 初期状態 | `progress` (もう着手している / これからすぐやる) / `todo` (後でやる) / `pending` (回答・判断・先行タスク待ちで着手できない) |
+| 種別 | `research` (調査: 結論・根拠を出す) / `implementation` (実装: コードや成果物を変える)。後から変えられない (目的が変われば別タスク) |
+| 待ちの有無 | 回答・判断・先行タスク待ちで計画にも着手できないか (作った後に `claim` → `block` で待ちにする) |
 | タスクの粒度 | 1つにまとめるか、複数に分けるか (調査と実装を分けるなど) |
 | 対応する手順書 | 動作確認や手動テストを伴うタスクのとき、`docs/feature/` 配下の既存の feature / 新規に作る / 無し |
 | 不足している材料 | 会話から判断できない対象・期待値・待ちの相手だけ |
@@ -85,12 +89,13 @@ raprid job create <案件名>
 タスク名は**作業内容が分かる英小文字とハイフン** (`confirm-button-removal-survey` など)。
 
 ```sh
-raprid task add <案件名> <タスク名> <状態> "<タイトル>" [blockedBy] \
+raprid task add <案件名> <タスク名> --type research|implementation "<タイトル>" \
   --requested-by <human/識別子|agent/識別子> --created-by <human/識別子|agent/識別子>
 ```
 
-このコマンドは既存 ID を検査して次の `T-001` 形式の ID を採番し、`tasks/<タスク名>/index.md` と
-状態索引 `status/<状態>/<タスク名> -> ../../tasks/<タスク名>` をまとめて作る。
+このコマンドは既存 ID を検査して次の `T-001` 形式の ID を採番し、`tasks/<タスク名>/index.md` (計画が `ready`、
+後続の工程は `waiting`) と作業索引 `status/plan/ready/<タスク名> -> ../../../tasks/<タスク名>` をまとめて作る。
+種別の別名 (`search`・`implement` など) は受け付けない。
 同名のタスクや索引があれば何も作らずに失敗する (終了コード 1、引数の誤りは 2)。
 `requestedBy` はタスクを必要とした依頼元、`createdBy` は記録を作った actor。
 人の依頼を agent が登録する場合は、たとえば `--requested-by human/saiki --created-by agent/codex` と分ける。
@@ -113,12 +118,13 @@ raprid task note <案件名> <T-001> <詳細名> "<見出し>"   # 01-<詳細名
 
 作成したパスと要点を報告し、判断が未確定の部分は明記する。登録依頼に対する完了前の再承認は不要。
 
-### 5. 初期状態と待ちの相手を決める
+### 5. 担当と待ちの相手を決める
 
-**`pending` で登録する場合は `blockedBy` に待っている相手を必ず書く**
+作った直後は計画が `ready` で担当は未割当。担当が決まっていれば task-transition で `assign`、
+すぐ着手するなら担当本人が `claim` する (登録した agent が担当とは限らない。`createdBy` を担当とみなさない)。
+**外部要因で計画にも着手できない場合は、`claim` の後に `block --blocked-by <相手>` で待ちにする**
 (`qa/Q-001`、`task/T-001`、別案件の`qa/<案件名>/Q-001`、または`other: <待ちの内容>`)。
-書けないなら `pending` ではなく `todo` にする。
-起票と同時に QA を作る場合は、QA を先に作って名前を確定させてから書く。
+書けないなら待ちにせず `ready` のままにする。人への質問で待つなら `raprid task ask` で QA の起票と待ちを一体で行う。
 
 ### 6. 整合性を確認する
 
@@ -130,10 +136,10 @@ raprid task list <案件名>      # 末尾に「要確認」が出ないこと (
 head -12 jobs/<案件名>/tasks/<タスク名>/index.md
 ```
 
-* リンクが 1 つの状態ディレクトリにだけ存在すること
-* `readlink` の結果が `../../tasks/<タスク名>` であること
+* 作業索引が `status/plan/ready/<タスク名>` の 1 つだけにあること
+* `readlink` の結果が `../../../tasks/<タスク名>` であること
 * リンク経由で中身が読めること (読めなければリンク切れ)
-* 実体の status とリンクの置き場所が一致し、pending の blockedBy が空でないこと
+* `raprid task show <案件名> <ID> --json --schema-version 2` の `type`・`phase`・`phaseStatus` が意図どおりであること
 
 ### 7. セッションログに作業記録を残す
 
@@ -188,7 +194,7 @@ jobs/PROJ-123/
 ├── tasks/confirm-button-removal-survey/
 │   ├── index.md                            # 実体 (T-001)
 │   └── 01-survey.md                        # 調査の詳細
-└── status/progress/confirm-button-removal-survey -> ../../tasks/confirm-button-removal-survey
+└── status/plan/ready/confirm-button-removal-survey -> ../../../tasks/confirm-button-removal-survey   # 調査 (research)
 
 logs/2026/08/19/<agent_name>/<session_id>/index.md に記録
 コミット: 3f2a1b0 PROJ-123 の job と調査タスクを追加

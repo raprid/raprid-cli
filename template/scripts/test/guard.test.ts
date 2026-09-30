@@ -45,7 +45,7 @@ const unchanged = () => snapshot(root, (rel) => rel === "jobs/.locks");
 const multiline = "方針は次のとおり。\n\n## 手順\n\n1. 確認環境で実行する\n2. 結果を貼る\n\n```sh\n## コード内の見出し\nraprid task list\n```\n\n以上。";
 
 test("--capabilities に guarded-write-v1 を含む", () => {
-  assert.deepEqual(JSON.parse(ok(["--capabilities"]).stdout).capabilities, ["query-v1", "guarded-write-v1"]);
+  assert.deepEqual(JSON.parse(ok(["--capabilities"]).stdout).capabilities, ["query-v1", "guarded-write-v1", "query-v2", "workflow-v3", "query-v3", "workflow-v4"]);
 });
 
 test("複数行の回答を標準入力から受け取り、見出しやコードブロックを含んでも次の読み取りで失わない", () => {

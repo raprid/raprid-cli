@@ -1,0 +1,890 @@
+{
+ "description": "workflowVersion 3 の正しいフィクスチャ (base) の一部を set / delete で変えた不正な例。schema は JSON Schema (task-workflow-v3) だけで受け付けるか (構造の規則なら false、項目をまたぐ規則なら true)、codes は validateTaskV3 が返す code と項目。",
+ "cases": [
+  {
+   "name": "種別が無い",
+   "base": "v3-research-new.md",
+   "delete": [
+    [
+     "type"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_MISSING",
+     "type"
+    ]
+   ]
+  },
+  {
+   "name": "種別が空",
+   "base": "v3-research-new.md",
+   "set": [
+    [
+     [
+      "type"
+     ],
+     null
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "type"
+    ]
+   ]
+  },
+  {
+   "name": "未知の種別",
+   "base": "v3-research-new.md",
+   "set": [
+    [
+     [
+      "type"
+     ],
+     "bugfix"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "type"
+    ]
+   ]
+  },
+  {
+   "name": "種別の別名 search",
+   "base": "v3-research-new.md",
+   "set": [
+    [
+     [
+      "type"
+     ],
+     "search"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "type"
+    ]
+   ]
+  },
+  {
+   "name": "種別の別名 implement",
+   "base": "v3-implementation-new.md",
+   "set": [
+    [
+     [
+      "type"
+     ],
+     "implement"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "type"
+    ]
+   ]
+  },
+  {
+   "name": "種別の大文字違い",
+   "base": "v3-implementation-new.md",
+   "set": [
+    [
+     [
+      "type"
+     ],
+     "Implementation"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "type"
+    ]
+   ]
+  },
+  {
+   "name": "種別が配列",
+   "base": "v3-research-new.md",
+   "set": [
+    [
+     [
+      "type"
+     ],
+     [
+      "research"
+     ]
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_ENUM",
+     "type"
+    ]
+   ]
+  },
+  {
+   "name": "対応していない版",
+   "base": "v3-research-new.md",
+   "set": [
+    [
+     [
+      "workflowVersion"
+     ],
+     5
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_VERSION",
+     "workflowVersion"
+    ]
+   ]
+  },
+  {
+   "name": "版が文字列",
+   "base": "v3-research-new.md",
+   "set": [
+    [
+     [
+      "workflowVersion"
+     ],
+     "3"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_VERSION",
+     "workflowVersion"
+    ]
+   ]
+  },
+  {
+   "name": "v3 の現在の工程に implement",
+   "base": "v3-research-execute-progress.md",
+   "set": [
+    [
+     [
+      "phase"
+     ],
+     "implement"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_PHASE_RENAMED",
+     "phase"
+    ]
+   ]
+  },
+  {
+   "name": "v3 の workflow に implement を追加",
+   "base": "v3-research-execute-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "implement"
+     ],
+     {
+      "status": "waiting",
+      "attempt": 1,
+      "assignee": null,
+      "completedBy": null,
+      "completedAt": null,
+      "outcome": null,
+      "inputRevision": null,
+      "inputSeq": null,
+      "artifactRefs": []
+     }
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_PHASE_RENAMED",
+     "workflow.implement"
+    ]
+   ]
+  },
+  {
+   "name": "v3 の execute が無い",
+   "base": "v3-research-execute-progress.md",
+   "delete": [
+    [
+     "workflow",
+     "execute"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_MISSING",
+     "workflow.execute"
+    ]
+   ]
+  },
+  {
+   "name": "v3 の履歴に implement",
+   "base": "v3-research-execute-progress.md",
+   "set": [
+    [
+     [
+      "history",
+      2,
+      "phase"
+     ],
+     "implement"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_PHASE_RENAMED",
+     "history[2].phase"
+    ]
+   ]
+  },
+  {
+   "name": "未知の工程",
+   "base": "v3-research-execute-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "deploy"
+     ],
+     {}
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_UNKNOWN",
+     "workflow"
+    ]
+   ]
+  },
+  {
+   "name": "計画を終えずに実行",
+   "base": "v3-research-new.md",
+   "set": [
+    [
+     [
+      "phase"
+     ],
+     "execute"
+    ],
+    [
+     [
+      "workflow",
+      "execute",
+      "status"
+     ],
+     "ready"
+    ],
+    [
+     [
+      "workflow",
+      "execute",
+      "inputRevision"
+     ],
+     1
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_ORDER",
+     "workflow.plan.status"
+    ]
+   ]
+  },
+  {
+   "name": "実行を飛ばしてレビュー",
+   "base": "v3-research-execute-progress.md",
+   "set": [
+    [
+     [
+      "phase"
+     ],
+     "review"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "status"
+     ],
+     "ready"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "inputRevision"
+     ],
+     1
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_ORDER",
+     "workflow.execute.status"
+    ]
+   ]
+  },
+  {
+   "name": "調査の実行者が自分の調査を承認",
+   "base": "v3-research-closed.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "completedBy"
+     ],
+     "agent/claude"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "assignee"
+     ],
+     "agent/claude"
+    ],
+    [
+     [
+      "history",
+      3,
+      "actor"
+     ],
+     "agent/claude"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_SEPARATION",
+     "workflow.review.completedBy"
+    ]
+   ]
+  },
+  {
+   "name": "実装の実行者が自分の実装を承認",
+   "base": "v3-implementation-closed.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "completedBy"
+     ],
+     "agent/claude"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "assignee"
+     ],
+     "agent/claude"
+    ],
+    [
+     [
+      "history",
+      3,
+      "actor"
+     ],
+     "agent/claude"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_SEPARATION",
+     "workflow.review.completedBy"
+    ]
+   ]
+  },
+  {
+   "name": "調査の受入を AI が完了",
+   "base": "v3-research-closed.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "acceptance",
+      "completedBy"
+     ],
+     "agent/codex"
+    ],
+    [
+     [
+      "workflow",
+      "acceptance",
+      "assignee"
+     ],
+     "agent/codex"
+    ],
+    [
+     [
+      "history",
+      4,
+      "actor"
+     ],
+     "agent/codex"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HUMAN",
+     "workflow.acceptance.completedBy"
+    ]
+   ]
+  },
+  {
+   "name": "実装の受入の担当が AI",
+   "base": "v3-implementation-new.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "acceptance",
+      "assignee"
+     ],
+     "agent/codex"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HUMAN",
+     "workflow.acceptance.assignee"
+    ]
+   ]
+  },
+  {
+   "name": "調査をレビューなしで閉じる",
+   "base": "v3-research-closed.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "acceptance",
+      "outcome"
+     ],
+     "completed"
+    ],
+    [
+     [
+      "history",
+      4,
+      "outcome"
+     ],
+     "completed"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_CLOSED",
+     "workflow.acceptance.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "調査の実行を成果物なしで完了",
+   "base": "v3-research-closed.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "execute",
+      "artifactRefs"
+     ],
+     []
+    ],
+    [
+     [
+      "history",
+      2,
+      "refs"
+     ],
+     []
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_DONE",
+     "workflow.execute.artifactRefs"
+    ]
+   ]
+  },
+  {
+   "name": "完了の後に成果物を差し替え",
+   "base": "v3-implementation-closed.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "execute",
+      "artifactRefs"
+     ],
+     [
+      {
+       "path": "02-handoff.md"
+      }
+     ]
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_COMPLETION",
+     "workflow.execute.artifactRefs"
+    ]
+   ]
+  },
+  {
+   "name": "成果物のパスがタスクの外",
+   "base": "v3-research-closed.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "execute",
+      "artifactRefs",
+      0,
+      "path"
+     ],
+     "../other/02-findings.md"
+    ],
+    [
+     [
+      "history",
+      2,
+      "refs",
+      0,
+      "path"
+     ],
+     "../other/02-findings.md"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_REF",
+     "workflow.execute.artifactRefs[0].path"
+    ]
+   ]
+  },
+  {
+   "name": "commit に repo が無い",
+   "base": "v3-research-review-progress.md",
+   "delete": [
+    [
+     "workflow",
+     "execute",
+     "artifactRefs",
+     1,
+     "repo"
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_REF",
+     "workflow.execute.artifactRefs[1].repo"
+    ]
+   ]
+  },
+  {
+   "name": "実行の完了が complete ではなく decide",
+   "base": "v3-research-closed.md",
+   "set": [
+    [
+     [
+      "history",
+      2,
+      "event"
+     ],
+     "decide"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_EVENT",
+     "history[2].event"
+    ]
+   ]
+  },
+  {
+   "name": "レビューが古い実行の完了を受け取る",
+   "base": "v3-research-review-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "inputSeq"
+     ],
+     2
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_INPUT",
+     "workflow.review.inputSeq"
+    ]
+   ]
+  },
+  {
+   "name": "差戻し後の実行が古い計画の版",
+   "base": "v3-research-requirement-revised.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "execute",
+      "inputRevision"
+     ],
+     1
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_STALE",
+     "workflow.execute.inputRevision"
+    ]
+   ]
+  },
+  {
+   "name": "差戻し後に古いレビューの試行を使う",
+   "base": "v3-implementation-review-returned.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "review",
+      "status"
+     ],
+     "done"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "attempt"
+     ],
+     1
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "completedBy"
+     ],
+     "agent/codex"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "completedAt"
+     ],
+     "2026-10-01"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "outcome"
+     ],
+     "approved"
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "inputRevision"
+     ],
+     1
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "inputSeq"
+     ],
+     3
+    ],
+    [
+     [
+      "workflow",
+      "review",
+      "artifactRefs"
+     ],
+     [
+      {
+       "path": "03-review.md"
+      }
+     ]
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_ORDER",
+     "workflow.review.status"
+    ]
+   ]
+  },
+  {
+   "name": "通常の履歴の途中に legacy_import",
+   "base": "v3-research-execute-progress.md",
+   "set": [
+    [
+     [
+      "history",
+      3
+     ],
+     {
+      "seq": 4,
+      "at": "2026-09-30T00:00:00Z",
+      "actor": "agent/claude",
+      "event": "legacy_import",
+      "phase": "execute",
+      "attempt": 1,
+      "inputRevision": null,
+      "outcome": "legacy_import",
+      "from": "progress",
+      "to": "done",
+      "reason": null,
+      "refersTo": null,
+      "refs": []
+     }
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "history[3].event"
+    ]
+   ]
+  },
+  {
+   "name": "移行でない工程を legacy_import で完了扱い",
+   "base": "v3-research-execute-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "plan",
+      "outcome"
+     ],
+     "legacy_import"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "workflow.plan.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "legacy_done なのに承認を記録",
+   "base": "v3-research-closed.md",
+   "set": [
+    [
+     [
+      "closureReason"
+     ],
+     "legacy_done"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_LEGACY",
+     "workflow.plan.outcome"
+    ]
+   ]
+  },
+  {
+   "name": "pending なのに待ちが無い",
+   "base": "v3-research-execute-progress.md",
+   "set": [
+    [
+     [
+      "workflow",
+      "execute",
+      "status"
+     ],
+     "pending"
+    ]
+   ],
+   "schema": true,
+   "codes": [
+    [
+     "WF_BLOCKED",
+     "blockedBy"
+    ]
+   ]
+  },
+  {
+   "name": "v2 の文書の版だけを 3 にした",
+   "base": "v2-implement-progress.md",
+   "set": [
+    [
+     [
+      "workflowVersion"
+     ],
+     3
+    ]
+   ],
+   "schema": false,
+   "codes": [
+    [
+     "WF_FIELD_MISSING",
+     "type"
+    ],
+    [
+     "WF_PHASE_RENAMED",
+     "phase"
+    ],
+    [
+     "WF_PHASE_RENAMED",
+     "workflow.implement"
+    ],
+    [
+     "WF_FIELD_MISSING",
+     "workflow.execute"
+    ]
+   ]
+  }
+ ]
+}

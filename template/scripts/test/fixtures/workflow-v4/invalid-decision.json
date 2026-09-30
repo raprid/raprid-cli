@@ -1,0 +1,1512 @@
+{
+ "description": "判断記録 (decisions/<工程>-<試行>.md) の不正な例と、タスクとの照合の不正な例。decision は base の記録を set / delete で変える (schema は JSON Schema (decision-approval-v1) だけで受け付けるか)、task は base の index.md を変える、extra は別の場面の記録を足す、remove は記録を外す。codes は validateDecision と checkTaskDecisions が返す code と項目 (照合の項目は decisions/<id>.md: <項目>)。",
+ "cases": [
+  {
+   "name": "kind が違う",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "kind"
+      ],
+      "review"
+     ]
+    ]
+   },
+   "schema": false,
+   "codes": [
+    [
+     "WF_DECISION",
+     "kind"
+    ]
+   ]
+  },
+  {
+   "name": "id と phase が食い違う",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "phase"
+      ],
+      "review"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "phase"
+    ]
+   ]
+  },
+  {
+   "name": "id と attempt が食い違う",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "attempt"
+      ],
+      2
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "attempt"
+    ]
+   ]
+  },
+  {
+   "name": "open なのに outcome がある",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "outcome"
+      ],
+      "approved"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "outcome"
+    ]
+   ]
+  },
+  {
+   "name": "approved なのに decidedBy が無い",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "decidedBy"
+      ],
+      null
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decidedBy"
+    ]
+   ]
+  },
+  {
+   "name": "decidedBy が AI",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "decidedBy"
+      ],
+      "agent/codex"
+     ],
+     [
+      [
+       "history",
+       1,
+       "actor"
+      ],
+      "agent/codex"
+     ],
+     [
+      [
+       "history",
+       1,
+       "to"
+      ],
+      "agent/codex"
+     ],
+     [
+      [
+       "history",
+       2,
+       "actor"
+      ],
+      "agent/codex"
+     ],
+     [
+      [
+       "assignee"
+      ],
+      "agent/codex"
+     ]
+    ]
+   },
+   "schema": false,
+   "codes": [
+    [
+     "WF_HUMAN",
+     "decidedBy"
+    ],
+    [
+     "WF_HUMAN",
+     "assignee"
+    ],
+    [
+     "WF_HUMAN",
+     "history[1].actor"
+    ]
+   ]
+  },
+  {
+   "name": "担当が AI",
+   "base": "research-plan-pending-assigned",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "assignee"
+      ],
+      "agent/claude"
+     ],
+     [
+      [
+       "history",
+       0,
+       "to"
+      ],
+      "agent/claude"
+     ]
+    ]
+   },
+   "schema": false,
+   "codes": [
+    [
+     "WF_HUMAN",
+     "assignee"
+    ]
+   ]
+  },
+  {
+   "name": "見送りに理由が無い",
+   "base": "implementation-plan-rejected",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "reason"
+      ],
+      null
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "reason"
+    ]
+   ]
+  },
+  {
+   "name": "plan の見送りで execute へ戻す",
+   "base": "implementation-plan-rejected",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "returnTo"
+      ],
+      "execute"
+     ],
+     [
+      [
+       "history",
+       2,
+       "to"
+      ],
+      "execute"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "returnTo"
+    ]
+   ]
+  },
+  {
+   "name": "review の見送りで戻す工程が無い",
+   "base": "implementation-review-rejected-to-execute",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "returnTo"
+      ],
+      null
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "returnTo"
+    ]
+   ]
+  },
+  {
+   "name": "無効化に理由が無い",
+   "base": "research-plan-superseded",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "reason"
+      ],
+      null
+     ],
+     [
+      [
+       "history",
+       1,
+       "reason"
+      ],
+      null
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "reason"
+    ],
+    [
+     "WF_REASON",
+     "history[1].reason"
+    ]
+   ]
+  },
+  {
+   "name": "無効化に outcome がある",
+   "base": "research-plan-superseded",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "outcome"
+      ],
+      "rejected"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "outcome"
+    ]
+   ]
+  },
+  {
+   "name": "履歴の最初が claim",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "history",
+       0,
+       "event"
+      ],
+      "claim"
+     ],
+     [
+      [
+       "history",
+       0,
+       "actor"
+      ],
+      "human/saiki"
+     ],
+     [
+      [
+       "history",
+       0,
+       "to"
+      ],
+      "human/saiki"
+     ],
+     [
+      [
+       "assignee"
+      ],
+      "human/saiki"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history[0].event"
+    ]
+   ]
+  },
+  {
+   "name": "AI が claim",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "history",
+       1,
+       "actor"
+      ],
+      "agent/claude"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_HUMAN",
+     "history[1].actor"
+    ]
+   ]
+  },
+  {
+   "name": "担当が履歴と食い違う",
+   "base": "research-review-pending",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "assignee"
+      ],
+      "human/saiki"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "assignee"
+    ]
+   ]
+  },
+  {
+   "name": "担当の変更に理由が無い",
+   "base": "research-review-pending",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "history",
+       1,
+       "reason"
+      ],
+      null
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_REASON",
+     "history[1].reason"
+    ]
+   ]
+  },
+  {
+   "name": "閉じた記録に履歴を足した",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "history",
+       3
+      ],
+      {
+       "seq": 4,
+       "at": "2026-10-01T06:00:00Z",
+       "actor": "human/saiki",
+       "event": "assign",
+       "from": "human/saiki",
+       "to": "human/other",
+       "reason": "後から替えた"
+      }
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history"
+    ]
+   ]
+  },
+  {
+   "name": "承認したのに status が open",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "status"
+      ],
+      "open"
+     ],
+     [
+      [
+       "decidedBy"
+      ],
+      null
+     ],
+     [
+      [
+       "decidedAt"
+      ],
+      null
+     ],
+     [
+      [
+       "decisionSeq"
+      ],
+      null
+     ],
+     [
+      [
+       "outcome"
+      ],
+      null
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "status"
+    ]
+   ]
+  },
+  {
+   "name": "decidedAt が履歴と違う",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "decidedAt"
+      ],
+      "2026-10-01T07:00:00Z"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decidedAt"
+    ]
+   ]
+  },
+  {
+   "name": "提出の成果物が空",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "submission",
+       "artifactRefs"
+      ],
+      []
+     ]
+    ]
+   },
+   "schema": false,
+   "codes": [
+    [
+     "WF_DECISION",
+     "submission.artifactRefs"
+    ]
+   ]
+  },
+  {
+   "name": "createdAt が日付だけ",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "createdAt"
+      ],
+      "2026-10-01"
+     ]
+    ]
+   },
+   "schema": false,
+   "codes": [
+    [
+     "WF_DATETIME",
+     "createdAt"
+    ]
+   ]
+  },
+  {
+   "name": "reportRefs がタスクの外",
+   "base": "research-closed-approved",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "reportRefs",
+       0,
+       "path"
+      ],
+      "../other.md"
+     ]
+    ]
+   },
+   "schema": false,
+   "codes": [
+    [
+     "WF_REF",
+     "reportRefs[0].path"
+    ]
+   ]
+  },
+  {
+   "name": "別のタスクの記録",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "task"
+      ],
+      "T-999"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decisions/plan-1.md: task"
+    ]
+   ]
+  },
+  {
+   "name": "要件の版が今のタスクと違う",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "requirementRevision"
+      ],
+      2
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_APPROVAL_STALE",
+     "decisions/plan-1.md: requirementRevision"
+    ]
+   ]
+  },
+  {
+   "name": "提出の seq が提出でない",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "submissionSeq"
+      ],
+      2
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_APPROVAL_STALE",
+     "decisions/plan-1.md: submissionSeq"
+    ]
+   ]
+  },
+  {
+   "name": "提出者の写しが違う",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "submission",
+       "completedBy"
+      ],
+      "agent/other"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_APPROVAL_STALE",
+     "decisions/plan-1.md: submission.completedBy"
+    ]
+   ]
+  },
+  {
+   "name": "提出の日時の写しが違う",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "submission",
+       "completedAt"
+      ],
+      "2026-10-01T04:00:00Z"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_APPROVAL_STALE",
+     "decisions/plan-1.md: submission.completedAt"
+    ]
+   ]
+  },
+  {
+   "name": "提出の成果物の写しが違う",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "submission",
+       "artifactRefs"
+      ],
+      [
+       {
+        "path": "01-plan-v2.md"
+       }
+      ]
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_APPROVAL_STALE",
+     "decisions/plan-1.md: submission.artifactRefs"
+    ]
+   ]
+  },
+  {
+   "name": "v4 の提出なのに origin が import",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "origin"
+      ],
+      "import"
+     ],
+     [
+      [
+       "history",
+       0,
+       "event"
+      ],
+      "import"
+     ],
+     [
+      [
+       "history",
+       0,
+       "actor"
+      ],
+      "human/saiki"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decisions/plan-1.md: origin"
+    ]
+   ]
+  },
+  {
+   "name": "移行元の提出なのに origin が submit",
+   "base": "implementation-migrated-plan-require",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "origin"
+      ],
+      "submit"
+     ],
+     [
+      [
+       "history",
+       0,
+       "event"
+      ],
+      "create"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decisions/plan-1.md: origin"
+    ]
+   ]
+  },
+  {
+   "name": "タスクが指していない open の記録 (孤立)",
+   "base": "implementation-plan-pending",
+   "extra": [
+    {
+     "id": "review-1",
+     "from": "research-review-pending/review-1",
+     "set": [
+      [
+       [
+        "task"
+       ],
+       "T-203"
+      ]
+     ]
+    }
+   ],
+   "codes": [
+    [
+     "WF_APPROVAL_ORPHAN",
+     "decisions/review-1.md"
+    ]
+   ]
+  },
+  {
+   "name": "承認の後に open のまま残った記録 (孤立)",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "status"
+      ],
+      "open"
+     ],
+     [
+      [
+       "decidedBy"
+      ],
+      null
+     ],
+     [
+      [
+       "decidedAt"
+      ],
+      null
+     ],
+     [
+      [
+       "decisionSeq"
+      ],
+      null
+     ],
+     [
+      [
+       "outcome"
+      ],
+      null
+     ]
+    ],
+    "delete": [
+     [
+      "history",
+      2
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_APPROVAL_ORPHAN",
+     "decisions/plan-1.md"
+    ],
+    [
+     "WF_DECISION",
+     "decisions/plan-1.md: status"
+    ]
+   ]
+  },
+  {
+   "name": "タスクが pending なのに判断記録が無い",
+   "base": "implementation-plan-pending",
+   "remove": [
+    "plan-1"
+   ],
+   "codes": [
+    [
+     "WF_APPROVAL",
+     "workflow.plan.approval"
+    ]
+   ]
+  },
+  {
+   "name": "タスクが指す記録が閉じている",
+   "base": "implementation-plan-pending",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "assignee"
+      ],
+      "human/saiki"
+     ],
+     [
+      [
+       "status"
+      ],
+      "rejected"
+     ],
+     [
+      [
+       "decidedBy"
+      ],
+      "human/saiki"
+     ],
+     [
+      [
+       "decidedAt"
+      ],
+      "2026-10-01T05:00:00Z"
+     ],
+     [
+      [
+       "decisionSeq"
+      ],
+      3
+     ],
+     [
+      [
+       "outcome"
+      ],
+      "rejected"
+     ],
+     [
+      [
+       "returnTo"
+      ],
+      "plan"
+     ],
+     [
+      [
+       "reason"
+      ],
+      "先に閉じた"
+     ],
+     [
+      [
+       "history",
+       1
+      ],
+      {
+       "seq": 2,
+       "at": "2026-10-01T04:00:00Z",
+       "actor": "human/saiki",
+       "event": "claim",
+       "from": null,
+       "to": "human/saiki",
+       "reason": null
+      }
+     ],
+     [
+      [
+       "history",
+       2
+      ],
+      {
+       "seq": 3,
+       "at": "2026-10-01T05:00:00Z",
+       "actor": "human/saiki",
+       "event": "reject",
+       "from": "open",
+       "to": "plan",
+       "reason": "先に閉じた"
+      }
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_APPROVAL_CLOSED",
+     "workflow.plan.approval"
+    ]
+   ]
+  },
+  {
+   "name": "承認済みの記録の decisionSeq が別の履歴",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "decisionSeq"
+      ],
+      2
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decisions/plan-1.md: decisionSeq"
+    ]
+   ]
+  },
+  {
+   "name": "承認済みの記録の decidedBy がタスクの履歴と違う",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "decidedBy"
+      ],
+      "human/other"
+     ],
+     [
+      [
+       "history",
+       2,
+       "actor"
+      ],
+      "human/other"
+     ],
+     [
+      [
+       "history",
+       1,
+       "actor"
+      ],
+      "human/other"
+     ],
+     [
+      [
+       "history",
+       1,
+       "to"
+      ],
+      "human/other"
+     ],
+     [
+      [
+       "assignee"
+      ],
+      "human/other"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decisions/plan-1.md: decidedBy"
+    ]
+   ]
+  },
+  {
+   "name": "見送りの戻す工程がタスクの履歴と違う",
+   "base": "implementation-review-rejected-to-execute",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "returnTo"
+      ],
+      "review"
+     ],
+     [
+      [
+       "history",
+       2,
+       "to"
+      ],
+      "review"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decisions/review-1.md: returnTo"
+    ]
+   ]
+  },
+  {
+   "name": "進んだ工程の記録が rejected のまま",
+   "base": "implementation-execute-ready",
+   "decision": {
+    "id": "plan-1",
+    "set": [
+     [
+      [
+       "status"
+      ],
+      "rejected"
+     ],
+     [
+      [
+       "outcome"
+      ],
+      "rejected"
+     ],
+     [
+      [
+       "returnTo"
+      ],
+      "plan"
+     ],
+     [
+      [
+       "reason"
+      ],
+      "見送り"
+     ],
+     [
+      [
+       "history",
+       2,
+       "event"
+      ],
+      "reject"
+     ],
+     [
+      [
+       "history",
+       2,
+       "to"
+      ],
+      "plan"
+     ],
+     [
+      [
+       "history",
+       2,
+       "reason"
+      ],
+      "見送り"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_APPROVAL_CLOSED",
+     "workflow.plan.approval"
+    ],
+    [
+     "WF_DECISION",
+     "decisions/plan-1.md: status"
+    ]
+   ]
+  },
+  {
+   "name": "試行が今の試行より大きい記録",
+   "base": "implementation-plan-pending",
+   "extra": [
+    {
+     "id": "plan-2",
+     "from": "implementation-plan-pending/plan-1",
+     "set": [
+      [
+       [
+        "id"
+       ],
+       "plan-2"
+      ],
+      [
+       [
+        "attempt"
+       ],
+       2
+      ]
+     ]
+    }
+   ],
+   "codes": [
+    [
+     "WF_DECISION",
+     "decisions/plan-2.md: attempt"
+    ],
+    [
+     "WF_APPROVAL_STALE",
+     "decisions/plan-2.md: submissionSeq"
+    ]
+   ]
+  },
+  {
+   "name": "移行した承認が指す判断が受入確認でない",
+   "base": "implementation-migrated-closed-accepted",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "decisionSeq"
+      ],
+      4
+     ],
+     [
+      [
+       "decidedBy"
+      ],
+      "agent/codex"
+     ],
+     [
+      [
+       "decidedAt"
+      ],
+      "2026-10-03T03:00:00Z"
+     ]
+    ]
+   },
+   "schema": false,
+   "codes": [
+    [
+     "WF_HUMAN",
+     "decidedBy"
+    ]
+   ]
+  },
+  {
+   "name": "移行した承認の decidedAt が受入確認の日時と違う",
+   "base": "implementation-migrated-closed-accepted",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "decidedAt"
+      ],
+      "2026-10-04T00:00:00Z"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_DECISION",
+     "decisions/review-1.md: decidedAt"
+    ]
+   ]
+  },
+  {
+   "name": "承認の履歴があるのに記録が無い",
+   "base": "implementation-execute-ready",
+   "remove": [
+    "plan-1"
+   ],
+   "codes": [
+    [
+     "WF_APPROVAL",
+     "workflow.plan.approval"
+    ],
+    [
+     "WF_DECISION",
+     "history[3].refs"
+    ]
+   ]
+  },
+  {
+   "name": "R20-1: claim の担当が他人に変わった後、前の人が承認",
+   "base": "research-closed-approved",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "assignee"
+      ],
+      "human/other"
+     ],
+     [
+      [
+       "history",
+       1,
+       "actor"
+      ],
+      "human/other"
+     ],
+     [
+      [
+       "history",
+       1,
+       "to"
+      ],
+      "human/other"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_NOT_APPROVER",
+     "history[2].actor"
+    ],
+    [
+     "WF_NOT_APPROVER",
+     "decisions/review-1.md: history[2].actor"
+    ]
+   ]
+  },
+  {
+   "name": "R20-1: claim の actor と引受先が違う",
+   "base": "research-closed-approved",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "history",
+       1,
+       "actor"
+      ],
+      "human/other"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_NOT_APPROVER",
+     "history[1].actor"
+    ],
+    [
+     "WF_NOT_APPROVER",
+     "decisions/review-1.md: history[1].actor"
+    ]
+   ]
+  },
+  {
+   "name": "担当でも依頼元でもない人による assign",
+   "base": "research-review-pending",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "history",
+       1,
+       "actor"
+      ],
+      "human/third"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_NOT_APPROVER",
+     "decisions/review-1.md: history[1].actor"
+    ]
+   ]
+  },
+  {
+   "name": "割当済みの判断記録を claim し直す",
+   "base": "research-review-pending",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "history",
+       1,
+       "event"
+      ],
+      "claim"
+     ],
+     [
+      [
+       "history",
+       1,
+       "actor"
+      ],
+      "human/other"
+     ],
+     [
+      [
+       "history",
+       1,
+       "from"
+      ],
+      null
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_NOT_APPROVER",
+     "history[1].actor"
+    ],
+    [
+     "WF_NOT_APPROVER",
+     "decisions/review-1.md: history[1].actor"
+    ]
+   ]
+  },
+  {
+   "name": "R20-2: 移行元で承認済みの記録へ assign を追記",
+   "base": "implementation-migrated-closed-accepted",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "history",
+       1
+      ],
+      {
+       "seq": 2,
+       "at": "2026-10-07T01:00:00Z",
+       "actor": "human/saiki",
+       "event": "assign",
+       "from": "human/saiki",
+       "to": "human/other",
+       "reason": "承認済み記録の担当変更"
+      }
+     ],
+     [
+      [
+       "assignee"
+      ],
+      "human/other"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history"
+    ]
+   ]
+  },
+  {
+   "name": "R20-2: 移行元で承認済みの記録へ claim を追記",
+   "base": "implementation-migrated-closed-accepted",
+   "decision": {
+    "id": "review-1",
+    "set": [
+     [
+      [
+       "history",
+       0,
+       "to"
+      ],
+      null
+     ],
+     [
+      [
+       "history",
+       1
+      ],
+      {
+       "seq": 2,
+       "at": "2026-10-07T01:00:00Z",
+       "actor": "human/other",
+       "event": "claim",
+       "from": null,
+       "to": "human/other",
+       "reason": null
+      }
+     ],
+     [
+      [
+       "assignee"
+      ],
+      "human/other"
+     ]
+    ]
+   },
+   "schema": true,
+   "codes": [
+    [
+     "WF_HISTORY_ORDER",
+     "history"
+    ]
+   ]
+  }
+ ]
+}

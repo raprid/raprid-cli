@@ -8,6 +8,8 @@ import { backspace, editorIsBlank, type EditorState, editorText, emptyEditor, in
 import type { AnswerForm, Blocker, Effect, KeyContext, KeyInput, KeyResult, MoveForm, UiState, WaitingTask, WriteRequest, WriteTarget } from "./model.js";
 import { graphemes, sanitize } from "./text.js";
 import { type ItemRecord, type QaRecord, type Snapshot, statusOrder, type TaskRecord } from "./types.js";
+import { openStepForm, pasteIntoStep, stepConfirmed, stepKey, stepNotice } from "./steps.js";
+import { isWorkflowTask } from "./workflow.js";
 
 export const actorPattern = /^human\/[a-z0-9][a-z0-9._-]*$/;
 export const answerLimit = 1024 * 1024;
@@ -26,6 +28,8 @@ function targetOf(record: ItemRecord): WriteTarget {
     title: record.title ?? record.name,
     status: record.status,
     blockedBy: record.kind === "task" ? record.blockedBy : [],
+    history: record.kind === "task" ? (record.history?.length ?? 0) : 0,
+    phase: record.kind === "task" ? (record.phase ?? null) : null,
   };
 }
 
@@ -61,6 +65,8 @@ function openForm(state: UiState, context: KeyContext, then: "answer" | "move"):
   if (then === "answer") {
     return done({ ...state, mode: { kind: "answer", target: targetOf(record), editor: emptyEditor, focus: "editor", discard: undefined, error: undefined, latest: undefined } });
   }
+  // 工程型タスクは工程の操作だけ (旧形式の状態の選択は出さない)
+  if (record.kind === "task" && isWorkflowTask(record)) return openStepForm(state, record, targetOf(record));
   const current = statusOrder.task.indexOf(record.status ?? "");
   const form: MoveForm = {
     kind: "move",
@@ -88,6 +94,11 @@ export function startAction(state: UiState, context: KeyContext, action: "answer
     if (record.status !== "unresolved") return done({ ...state, notice: "回答できるのは unresolved の QA です (再オープンは raprid qa move で行います)" });
   } else if (state.tab !== "task" || !record || record.kind !== "task") {
     return done({ ...state, notice: "タスクの一覧 (1) で対象を選んでから m を押してください" });
+  } else if (isWorkflowTask(record)) {
+    // 工程型タスク: 工程の操作 (claim・complete・decide など) だけを出す。状態を直接選ばせない
+    if (!state.workflow) return done({ ...state, notice: "このプロジェクトの scripts/ は工程型タスクの操作 (workflow-v3) に対応していません" });
+    if (record.readable === false || record.valid === false) return done({ ...state, notice: "形式に不整合がある工程型タスクは変更できません (要確認を確認してください)" });
+    if (record.workflowVersion !== 3) return done({ ...state, notice: `workflowVersion ${record.workflowVersion} のタスクは変更できません。workflowVersion 3 へ移行してから使ってください` });
   } else if (!statusOrder.task.includes(record.status ?? "")) {
     return done({ ...state, notice: "状態が不明なタスクは変更できません (index.md を確認してください)" });
   }
@@ -152,6 +163,7 @@ export function pasteIntoForm(state: UiState, text: string): UiState {
   if (mode.kind === "answer" && mode.focus === "editor" && !mode.discard) return { ...state, mode: { ...mode, editor: insertText(mode.editor, text), error: undefined } };
   if (mode.kind === "actor") return { ...state, mode: { ...mode, draft: mode.draft + typedLine(text), error: undefined } };
   if (mode.kind === "move" && mode.stage === "blocked" && mode.blockedFocus === "editor") return { ...state, mode: { ...mode, blocked: insertText(mode.blocked, text), error: undefined } };
+  if (mode.kind === "step") return { ...state, mode: pasteIntoStep(mode, text) };
   return state;
 }
 
@@ -257,6 +269,8 @@ export function handleFormKey(state: UiState, input: string, key: KeyInput, cont
     case "move":
       if (key.ctrl && input === "c") return done(state, "exit");
       return moveKey(state, mode, input, key, context);
+    case "step":
+      return stepKey(state, mode, input, key, context);
     case "resumeList": {
       if (key.ctrl && input === "c") return done(state, "exit");
       if (key.escape || input === "q") return done(normal(state));
@@ -301,20 +315,40 @@ export function applyWriteOutcome(state: UiState, outcome: WriteOutcome, snapsho
       const next: UiState = waiting.length > 0 && !mode.exitRequested ? { ...state, mode: { kind: "resumeList", qa: name, tasks: waiting, index: 0 }, notice } : normal(state, notice);
       return mode.exitRequested ? done(next, "refresh", "exit") : done(next, "refresh");
     }
-    const next = normal(state, `${name} を ${request.status} にしました${suffix}`);
+    const message = request.type === "workflow" ? `${stepNotice(request, outcome.result.item.kind === "task" ? outcome.result.item : undefined)}${suffix}` : `${name} を ${request.status} にしました${suffix}`;
+    const next = normal(state, message);
     return mode.exitRequested ? done(next, "refresh", "exit") : done(next, "refresh");
   }
   const latest = outcome.latest ? latestLines(outcome.latest) : undefined;
   const conflict = outcome.code === "REVISION_CONFLICT";
-  const message = conflict ? "他の変更と競合したため保存しませんでした。最新の内容を下に表示しています。確認してから保存し直してください" : `保存できませんでした: ${sanitize(outcome.message)}`;
+  // 工程の操作で、scripts/ が書き込む前に拒否したと分からない失敗は「保存できたか分からない」と示す (R15-3)
+  const unknown = request.type === "workflow" && !conflict && !isKnownRejection(outcome.code);
+  const message = conflict
+    ? "他の変更と競合したため保存しませんでした。最新の内容を下に表示しています。確認してから保存し直してください"
+    : unknown
+      ? `保存できたか分かりません (${sanitize(outcome.message)})。最新の内容を下に表示しています。確かめてから、必要なら保存し直してください (自動では送り直しません)`
+      : `保存できませんでした: ${sanitize(outcome.message)}`;
   // 競合したときは最新の revision で保存し直せるようにする (入力はそのまま。送り直すのは利用者)
-  const target = conflict && outcome.latest?.revision ? { ...request.target, revision: outcome.latest.revision, status: outcome.latest.status, blockedBy: outcome.latest.kind === "task" ? outcome.latest.blockedBy : [] } : request.target;
-  const resume = mode.resume.kind === "answer" ? { ...mode.resume, target, error: message, latest, focus: "editor" as const } : { ...mode.resume, target, error: message, latest, stage: "confirm" as const };
+  const target = conflict && outcome.latest?.revision
+    ? { ...request.target, revision: outcome.latest.revision, status: outcome.latest.status, blockedBy: outcome.latest.kind === "task" ? outcome.latest.blockedBy : [], history: outcome.latest.kind === "task" ? (outcome.latest.history?.length ?? 0) : 0 }
+    : request.target;
+  // 工程型タスクで競合したら、今の状態でその操作ができるとは限らないので、最新の記録で確かめ直してから送り直してもらう (入力は残す)
+  const resume =
+    mode.resume.kind === "answer"
+      ? { ...mode.resume, target, error: message, latest, focus: "editor" as const }
+      : mode.resume.kind === "step"
+        ? { ...mode.resume, target, error: message, latest, stage: "confirm" as const, record: conflict && outcome.latest?.kind === "task" ? outcome.latest : mode.resume.record }
+        : { ...mode.resume, target, error: message, latest, stage: "confirm" as const };
   const cancelled = mode.exitRequested ? "。保存に失敗したため終了を取り消しました" : "";
   return done({ ...state, mode: resume, notice: mode.exitRequested ? `終了を取り消しました${cancelled}` : undefined }, "refresh");
 }
 
 function latestLines(record: ItemRecord): string[] {
+  if (record.kind === "task" && isWorkflowTask(record)) {
+    const where = record.status === "closed" ? "closed" : `${record.phase ?? "-"} ${record.phaseStatus ?? "-"} (担当 ${record.assignee ?? "未割当"})`;
+    const last = record.history?.at(-1);
+    return [`最新の状態: ${where} (更新 ${record.updatedAt ?? "-"})`, ...(last ? [`最後の操作: ${last.actor} ${last.event} ${last.phase ?? ""} ${last.at}`] : [])];
+  }
   const lines = [`最新の状態: ${record.status ?? "未設定"} (更新 ${record.updatedAt ?? "-"})`];
   if (record.kind === "qa") {
     lines.push(`回答者: ${record.answeredBy ?? "-"}`);
@@ -327,6 +361,7 @@ function latestLines(record: ItemRecord): string[] {
 
 // 結果が分からない失敗 (応答が壊れた等) で、実体を読み直すと保存できていたか
 export function writeConfirmed(request: WriteRequest, latest: ItemRecord): boolean {
+  if (request.type === "workflow") return latest.kind === "task" && stepConfirmed(request, latest);
   if (request.type === "answer") {
     // scripts/ は改行を LF にそろえ、末尾の空白を落として保存する
     const expected = request.answer.replace(/\r\n?/g, "\n").replace(/\s+$/, "");
@@ -337,4 +372,11 @@ export function writeConfirmed(request: WriteRequest, latest: ItemRecord): boole
 }
 
 // scripts/ が変更前に拒否したことが分かっている失敗 (読み直して確かめる必要がない)
-export const knownRejections = new Set(["REVISION_CONFLICT", "BLOCKED_BY_QA", "BLOCKED_BY_UNREADABLE", "DEPENDENCY_CHANGED", "INVALID_ANSWER", "USAGE", "NOT_FOUND", "JOB_NOT_FOUND", "FAILED"]);
+// FAILED は含めない: scripts/ の一般的な失敗と、書き込んだ後の異常終了 (正しい JSON で error が無い・終了コードが 0 でない) を区別できないので、
+// 結果が分からない失敗として読み直して確かめる (R15-5)
+export const knownRejections = new Set(["REVISION_CONFLICT", "REVISION_REQUIRED", "BLOCKED_BY_QA", "BLOCKED_BY_UNREADABLE", "DEPENDENCY_CHANGED", "INVALID_ANSWER", "USAGE", "NOT_FOUND", "JOB_NOT_FOUND", "TASK_NOT_FOUND", "SCHEMA_V2_REQUIRED"]);
+
+// 工程型タスクの操作の拒否 (WF_…) は、scripts/ が書き込む前に止めたもの (失敗したら index.md と索引は変わらない)
+export function isKnownRejection(code: string): boolean {
+  return knownRejections.has(code) || code.startsWith("WF_");
+}

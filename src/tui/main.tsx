@@ -19,6 +19,8 @@ query-v1 に対応した scripts/ が必要。端末 (TTY) でない場合は ra
 キー操作は画面の下部と ? のヘルプに表示する。q または Ctrl+C で終了する。
 
 scripts/ が guarded-write-v1 に対応していれば、a で QA に回答し、m でタスクの状態を変更できる。
+scripts/ が query-v2・workflow-v3 に対応していれば、工程型タスク (種別・工程・担当) を表示し、m で工程の操作
+(引受・完了・判定・待ち・再開・やり直し・担当の変更)、w で ready の工程の一覧を使える。受入確認は根拠を示す確認画面で確定する。
 更新する人は --actor か最初の更新時の入力で human/<識別子> を指定する (ログイン名などから推測しない)。
 保存の前に確認画面を出し、他の変更と競合したときは保存せずに最新の内容を表示する。`;
 
@@ -61,6 +63,7 @@ export async function runTui(argv: string[], io: TuiIo = defaultIo()): Promise<n
 
   let root: string;
   let writable = false;
+  let workflow = false;
   try {
     root = currentProject(io.cwd).root;
   } catch (error) {
@@ -88,6 +91,10 @@ export async function runTui(argv: string[], io: TuiIo = defaultIo()): Promise<n
       return 1;
     }
     writable = capabilities.includes("guarded-write-v1");
+    // query-v2・workflow-v3 に対応した scripts/ なら schemaVersion 2 (工程型タスクを含む) で読み、工程の操作を許す。
+    // 対応していなければ schemaVersion 1 のまま (旧 scripts には工程型タスクが無い)
+    workflow = capabilities.includes("query-v2") && capabilities.includes("workflow-v3");
+    backend.useSchema(workflow ? 2 : 1);
     // 最初の取得は画面を開く前に行い、存在しない案件はエラーにする
     const first = await backend.snapshot();
     if (job !== null && !first.jobs.some((entry) => entry.name === job)) {
@@ -103,7 +110,7 @@ export async function runTui(argv: string[], io: TuiIo = defaultIo()): Promise<n
 
   snapshots.start();
   const instance = render(
-    <App snapshots={snapshots} details={details} initialJob={job} projectName={basename(root)} onUnmount={stop} writer={writable ? backend : undefined} actor={actor} />,
+    <App snapshots={snapshots} details={details} initialJob={job} projectName={basename(root)} onUnmount={stop} writer={writable ? backend : undefined} workflow={writable && workflow} actor={actor} />,
     {
     stdin: io.stdin,
     stdout: io.stdout,

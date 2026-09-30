@@ -175,7 +175,7 @@ test("初期化したプロジェクトの scripts/ で ui snapshot と show を
   assert.equal(spawnSync(process.execPath, [cli, "job", "create", "PROJ-1"], { cwd: root, env }).status, 0);
   assert.equal(spawnSync(process.execPath, [cli, "task", "add", "PROJ-1", "a", "todo", "日本語"], { cwd: root, env }).status, 0);
   const backend = new ScriptBackend(root);
-  assert.deepEqual(await backend.capabilities(), ["query-v1", "guarded-write-v1"]);
+  assert.deepEqual(await backend.capabilities(), ["query-v1", "guarded-write-v1", "query-v2", "workflow-v3", "query-v3", "workflow-v4"]);
   const data = await backend.snapshot();
   assert.equal(data.tasks[0].title, "日本語");
   const shown = await backend.show("task", "PROJ-1", "a");

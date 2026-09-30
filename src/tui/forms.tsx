@@ -4,7 +4,9 @@ import { Box, Text } from "ink";
 import type { ReactNode } from "react";
 import { blockedList, needsCheck } from "./actions.js";
 import { editorText, layoutEditor } from "./editor.js";
-import type { AnswerForm, Mode, MoveForm, UiState } from "./model.js";
+import type { AnswerForm, Mode, MoveForm, StepForm, UiState } from "./model.js";
+import { confirmLines, evidenceRows, evidenceWindow, isAcceptanceDecision } from "./steps.js";
+import { phaseLabels, stepLabel } from "./workflow.js";
 import { sanitize, truncate, wrap } from "./text.js";
 import { type QaRecord, type Snapshot, statusOrder } from "./types.js";
 
@@ -172,6 +174,123 @@ function MoveView(props: { form: MoveForm; state: UiState; width: number; height
   );
 }
 
+function EditorBox(props: { editor: Parameters<typeof layoutEditor>[0]; focused: boolean; width: number; height: number }) {
+  const rows = layoutEditor(props.editor, props.width - 2, props.height);
+  return (
+    <Box flexDirection="column" borderStyle={props.focused ? "bold" : "single"} width={props.width}>
+      {rows.map((row, index) => (
+        <Text key={index} wrap="truncate-end">
+          {row.before}
+          {row.cursor !== undefined && props.focused ? <Text inverse>{row.cursor}</Text> : (row.cursor ?? "")}
+          {row.after}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
+// 受入確認の根拠。すべての行をスクロールして見られ、最後まで表示しないと確認欄に印を付けられない (R15-1)
+function Evidence(props: { form: StepForm; width: number; height: number }) {
+  const { form } = props;
+  const rows = evidenceRows(form.record, props.width);
+  const window = evidenceWindow(props.height);
+  const shown = rows.slice(form.evidenceScroll, form.evidenceScroll + window);
+  const end = Math.min(rows.length, form.evidenceScroll + window);
+  return (
+    <>
+      <Text bold>
+        根拠 ({form.evidenceScroll + 1}〜{end} / {rows.length} 行{rows.length > window ? "  ↑↓ PgUp/PgDn でスクロール" : ""})
+      </Text>
+      {shown.map((line, index) => (
+        <Text key={index} color="cyan" wrap="truncate-end">
+          {line === "" ? " " : line}
+        </Text>
+      ))}
+      <Text color={form.evidenceSeen ? undefined : "yellow"}>
+        [{form.checked ? "x" : " "}] 実行の成果物 (対象の commit・資料) とレビューの結果を確かめた (Space で切替)
+        {form.evidenceSeen ? "" : "  ※ 根拠を最後まで表示すると印を付けられます"}
+      </Text>
+    </>
+  );
+}
+
+// 工程の操作: 選択 → 入力 → 確認。受入確認の判定は根拠 (実行の成果物・レビュー) を示し、確認欄に印を付けてから確定する
+function StepView(props: { form: StepForm; state: UiState; width: number; height: number }) {
+  const { form } = props;
+  const inner = props.width - 2;
+  const record = form.record;
+  const where = record.status === "closed" ? "closed" : `${phaseLabels[record.phase ?? ""] ?? record.phase} ${record.phaseStatus} / 担当 ${record.assignee ?? "未割当"}`;
+  const head = `${form.target.id} の工程の操作  (${where})  操作者 ${props.state.actor}`;
+  let body: ReactNode;
+  if (form.stage === "menu") {
+    body = (
+      <>
+        <Lines lines={[sanitize(form.target.title), "今の状態と操作者でできる操作だけを表示しています (状態を直接は選べません)"]} width={inner} dim max={3} />
+        {form.steps.map((step, index) => (
+          <Text key={step} inverse={index === form.index}>
+            {index === form.index ? ">" : " "} {stepLabel(step, record.phase)}
+          </Text>
+        ))}
+      </>
+    );
+  } else if (form.stage === "edit") {
+    const multi = form.fields.filter((field) => field.kind === "lines").length;
+    const room = Math.max(2, Math.floor((props.height - 6 - form.fields.length * 2) / Math.max(1, multi)));
+    body = (
+      <>
+        <Text bold>{stepLabel(form.step!, record.phase)}</Text>
+        {form.fields.map((field, index) => (
+          <Box key={field.key} flexDirection="column">
+            <Text bold={index === form.focus}>
+              {index === form.focus ? "> " : "  "}
+              {field.label}
+              {field.required ? " *" : ""}
+              {field.hint ? <Text dimColor>  {field.hint}</Text> : null}
+            </Text>
+            {field.kind === "choice" ? (
+              <Text>
+                {"  "}
+                {field.choices!.map((value, choice) => (
+                  <Text key={value} inverse={choice === field.choice}>
+                    {` ${value} `}
+                  </Text>
+                ))}
+                <Text dimColor>  ←→ で選択</Text>
+              </Text>
+            ) : (
+              <EditorBox editor={field.editor} focused={index === form.focus} width={inner} height={field.kind === "lines" ? room : 1} />
+            )}
+          </Box>
+        ))}
+        <Text>
+          <Button label="次へ" focused={form.focus === form.fields.length} />
+          <Button label="戻る" focused={form.focus === form.fields.length + 1} />
+        </Text>
+      </>
+    );
+  } else {
+    const acceptance = isAcceptanceDecision(form);
+    body = (
+      <>
+        <Text bold>{acceptance ? "受入確認: 次の根拠を確かめてから確定してください (人の最終確認)" : "この内容で保存しますか？"}</Text>
+        <Lines lines={confirmLines(form)} width={inner} max={acceptance ? 6 : Math.max(3, props.height - 8)} />
+        {acceptance && <Evidence form={form} width={props.width} height={props.height} />}
+        <Text>
+          <Button label={acceptance ? (form.step === "approve" ? "受け入れる" : "差し戻す") : "保存する"} focused={form.confirmFocus === "ok"} />
+          <Button label="戻る" focused={form.confirmFocus === "back"} />
+        </Text>
+      </>
+    );
+  }
+  return (
+    <Frame title={head} width={props.width} height={props.height}>
+      {body}
+      {form.error && <Lines lines={[form.error]} width={inner} color="red" max={3} />}
+      {form.latest && <Lines lines={form.latest} width={inner} color="yellow" max={4} />}
+    </Frame>
+  );
+}
+
 export function FormView(props: { state: UiState; snapshot: Snapshot | undefined; width: number; height: number }) {
   const { state, width, height } = props;
   const mode = state.mode;
@@ -193,9 +312,16 @@ export function FormView(props: { state: UiState; snapshot: Snapshot | undefined
       return <ConfirmAnswerView mode={mode} state={state} snapshot={props.snapshot} width={width} height={height} />;
     case "move":
       return <MoveView form={mode} state={state} width={width} height={height} />;
+    case "step":
+      return <StepView form={mode} state={state} width={width} height={height} />;
     case "saving": {
       const request = mode.request;
-      const what = request.type === "answer" ? `${request.target.id} に回答しています` : `${request.target.id} を ${request.status} に変更しています`;
+      const what =
+        request.type === "answer"
+          ? `${request.target.id} に回答しています`
+          : request.type === "workflow"
+            ? `${request.target.id} を「${stepLabel(request.kind, undefined)}」しています`
+            : `${request.target.id} を ${request.status} に変更しています`;
       return (
         <Frame title="保存中" width={width} height={height}>
           <Text>{what}…</Text>
@@ -233,6 +359,10 @@ export function formHints(state: UiState): string | undefined {
       if (mode.stage === "status") return "↑↓ 遷移先を選択  Enter 次へ  Esc 取消";
       if (mode.stage === "blocked") return mode.blockedFocus === "editor" ? "1 行に 1 件  Enter 次の行  Tab 次へ/戻る  Esc 戻る" : "Enter 実行  Tab / ←→ 切替  Esc 戻る";
       return "Space 確認欄  Tab / ←→ 切替  Enter 実行  Esc 戻る";
+    case "step":
+      if (mode.stage === "menu") return "↑↓ 操作を選択  Enter 次へ  Esc 取消";
+      if (mode.stage === "edit") return "Tab 次の欄  ←→ 選択・カーソル  Enter 次の欄 (複数行の欄は改行)  貼り付け可  Esc 操作の選択へ";
+      return isAcceptanceDecision(mode) ? "↑↓ PgUp/PgDn 根拠をスクロール  Space 確認欄  Tab / ←→ 切替  Enter 確定  Esc 戻る" : "Enter 実行  Tab / ←→ 切替  Esc 戻る";
     case "saving":
       return "保存中…";
     case "resumeList":

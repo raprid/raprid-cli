@@ -16,8 +16,10 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "ajv": "8.20.0",
     "esbuild": "0.28.2",
     "string-width": "8.3.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "yaml": "2.9.1"
   }
 }

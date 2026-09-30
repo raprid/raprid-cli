@@ -3,7 +3,7 @@
 // 途中で失敗したらこの実行で変えたものだけを戻す。
 
 import { mkdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { CliError } from "./errors.ts";
 import { exists, isDirectory, lstatOrUndefined, tempPath } from "./fsutil.ts";
 import { Item, type Job, type Kind } from "./jobs.ts";
@@ -24,18 +24,20 @@ export function assertStatusDirs(job: Job, kind: Kind): void {
   }
 }
 
-// 完成したディレクトリを rename で公開してから索引を張る
-export function createItem(job: Job, kind: Kind, name: string, content: string, status: string): Item {
+// 完成したディレクトリを rename で公開してから索引を張る。
+// 工程型タスクは作業索引 (status/<工程>/<工程の状態>/<名前>) に張るので、場所とリンク先を workLink で渡す
+export function createItem(job: Job, kind: Kind, name: string, content: string, status: string, workLink?: { link: string; target: string }): Item {
   const item = new Item(job, kind, name);
   const temp = tempPath(job.itemsDir(kind), `add-${name}`);
-  const link = join(job.statusDir(kind, status), name);
+  const link = workLink?.link ?? join(job.statusDir(kind, status), name);
   let published = false;
   try {
     mkdirSync(temp);
     writeFileSync(join(temp, "index.md"), content, { flag: "wx", mode: 0o644 });
     renameSync(temp, item.dir);
     published = true;
-    symlinkSync(job.linkTarget(kind, name), link);
+    if (workLink) mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(workLink?.target ?? job.linkTarget(kind, name), link);
     return item;
   } catch (error) {
     if (published) rmSync(item.dir, { recursive: true, force: true });

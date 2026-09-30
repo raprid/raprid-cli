@@ -22,9 +22,9 @@ Codex の入口は [AGENTS.md](AGENTS.md)。共通ルールは README.md とこ�
 | 個別の作業記録を作る | セッション内の `_.md` を複製 ([logs/README.md](logs/README.md)) |
 | 案件を始める | `raprid job create <案件名>` |
 | 案件の一覧を見る | `raprid job list` |
-| タスクを作る | `/add-task` または `raprid task add` |
+| タスクを作る | `/add-task` または `raprid task add <案件> <名前> --type research\|implementation <タイトル>` |
 | タスクのフェーズ・調査の記録を作る | `raprid task note <案件名> <ID> <詳細名>` |
-| タスクの状態を変える | `/task-transition` または `raprid task move` |
+| タスクの工程を進める | `/task-transition` または `raprid task claim\|complete\|decide\|block\|resume\|reopen\|assign` (旧形式は `raprid task move`) |
 | タスクの状況を見る | `/list-task` または `raprid task list [<案件名>]` |
 | 動作確認をする | `/verify-task` (手順を対話で提示し、結果を選択肢から選ぶ) |
 | 手動テストを実行して GIF を撮る | `/run-manual-test` (Claude in Chrome で実行) |
@@ -38,6 +38,7 @@ Codex の入口は [AGENTS.md](AGENTS.md)。共通ルールは README.md とこ�
 | リリース資料の確認手順を作る | `/build-release-check-sheet` (`docs/feature/` の手順書から起こす) |
 | submodule を追加する | `raprid repo add <URL> [--dir-name <名前>] <権限>` |
 | 旧構成 (`job/`) から移行する | `raprid job migrate --dry-run` → `--apply` (README の「旧構成からの移行」) |
+| 旧形式のタスクを工程型へ移す | `raprid job migrate-workflow --map <対応表>` → `--apply --plan <hash>` (README の「工程型への移行」) |
 | プロジェクト状態を更新する | `/reload-project` |
 
 submodule のローカル動作確認は `repos/<名前>/repo/`、作業ブランチは
@@ -60,6 +61,14 @@ submodule のローカル動作確認は `repos/<名前>/repo/`、作業ブラ�
 詳細は [docs/feature/README.md](docs/feature/README.md) を参照。
 
 ## タスクと QA の状態
+
+**新しいタスクは工程型 (workflowVersion 3) で作る。** 種別 (`type`: research / implementation) を必ず指定し、
+工程は `plan` → `execute` → `review` → `acceptance`。今の工程は `phase`、工程の状態は `workflow.<工程>.status`
+(`ready` / `progress` / `pending` / `waiting` / `done`)、タスク全体は `open` / `closed`。
+工程は `raprid task claim`・`complete`・`decide`・`block`・`resume`・`reopen`・`assign` で進め (`--if-match` が必須)、
+**`execute` を完了した actor は同じ成果物をレビューできない。受入確認は人 (`human/…`) だけが判定する。**
+AI は完了や受入を自己宣言しない。作業索引は `status/<工程>/<工程の状態>/` に置く (closed は 0 件)。
+詳細は README.md の「工程型タスク」。以下の旧形式の状態は、移行前のタスクにだけ使う。
 
 **状態の正は実体 (`tasks/<タスク名>/index.md`、`qa/<QA名>/index.md`) の frontmatter にある `status`。**
 `todo/` `pending/` `progress/` `done/` (タスク) と `unresolved/` `resolved/` (QA) に置く

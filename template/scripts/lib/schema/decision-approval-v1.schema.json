@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raprid.dev/schema/decision-approval-v1.schema.json",
+  "title": "raprid 判断記録 (workflowVersion 4 で人が plan・review の提出を承認・見送りする記録) の frontmatter",
+  "description": "jobs/<案件>/tasks/<タスク>/decisions/<工程>-<試行>.md の構造 (型・必須・列挙・書式) の契約。状態ごとの項目 (open は判断の項目が空、rejected は理由と戻す工程が必須など)・履歴との整合・元タスクとの照合 (工程・試行・要件の版・提出の seq・判断の seq) は scripts/lib/decision.ts の validateDecision と checkTaskDecisions が検証する。状態は open → approved / rejected / superseded の一方向で、open 以外は書き換えない。未知の項目は許して保持する。",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "task",
+    "phase",
+    "attempt",
+    "requirementRevision",
+    "submissionSeq",
+    "submission",
+    "status",
+    "assignee",
+    "decidedBy",
+    "decidedAt",
+    "decisionSeq",
+    "outcome",
+    "returnTo",
+    "reason",
+    "reportRefs",
+    "createdAt",
+    "origin",
+    "history"
+  ],
+  "properties": {
+    "id": {
+      "description": "<工程>-<試行> (ファイル名と同じ)",
+      "type": "string",
+      "pattern": "^(plan|review)-[1-9][0-9]*$"
+    },
+    "kind": {
+      "const": "approval"
+    },
+    "task": {
+      "description": "元タスクの ID (同じディレクトリのタスク)",
+      "type": "string",
+      "pattern": "^T-[0-9]{3,}$"
+    },
+    "phase": {
+      "enum": [
+        "plan",
+        "review"
+      ]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "requirementRevision": {
+      "description": "提出の時の要件の版",
+      "type": "integer",
+      "minimum": 1
+    },
+    "submissionSeq": {
+      "description": "判断する提出 (元タスクの history の seq。v4 の complete か、移行元の review の decide approved)",
+      "type": "integer",
+      "minimum": 1
+    },
+    "submission": {
+      "description": "提出の写し (判断画面の根拠)。提出の履歴の actor・at・refs",
+      "type": "object",
+      "required": [
+        "completedBy",
+        "completedAt",
+        "artifactRefs"
+      ],
+      "properties": {
+        "completedBy": {
+          "$ref": "#/$defs/actor"
+        },
+        "completedAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "artifactRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "status": {
+      "enum": [
+        "open",
+        "approved",
+        "rejected",
+        "superseded"
+      ]
+    },
+    "assignee": {
+      "description": "判断する人。null は未割当",
+      "$ref": "#/$defs/nullableHuman"
+    },
+    "decidedBy": {
+      "$ref": "#/$defs/nullableHuman"
+    },
+    "decidedAt": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/dateTime"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "decisionSeq": {
+      "description": "承認・見送り・無効化を記録した元タスクの history の seq",
+      "$ref": "#/$defs/nullablePositive"
+    },
+    "outcome": {
+      "enum": [
+        "approved",
+        "rejected",
+        null
+      ]
+    },
+    "returnTo": {
+      "description": "見送りで戻す工程 (plan の見送りは常に plan)",
+      "enum": [
+        "plan",
+        "execute",
+        "review",
+        null
+      ]
+    },
+    "reason": {
+      "description": "見送り・無効化の理由 (見送りでは必須)",
+      "$ref": "#/$defs/nullableLine"
+    },
+    "reportRefs": {
+      "description": "人の判断の記録 (Markdown)",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRef"
+      }
+    },
+    "createdAt": {
+      "$ref": "#/$defs/dateTime"
+    },
+    "origin": {
+      "description": "submit = v4 の complete が作った、import = 移行が作った",
+      "enum": [
+        "submit",
+        "import"
+      ]
+    },
+    "history": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "seq",
+          "at",
+          "actor",
+          "event",
+          "from",
+          "to",
+          "reason"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "$ref": "#/$defs/dateTime"
+          },
+          "actor": {
+            "$ref": "#/$defs/actor"
+          },
+          "event": {
+            "enum": [
+              "create",
+              "claim",
+              "assign",
+              "approve",
+              "reject",
+              "supersede",
+              "import"
+            ]
+          },
+          "from": {
+            "$ref": "#/$defs/nullableLine"
+          },
+          "to": {
+            "$ref": "#/$defs/nullableLine"
+          },
+          "reason": {
+            "$ref": "#/$defs/nullableLine"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "dateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$",
+      "description": "タイムゾーン付きの日時 (ISO 8601)。新しく書くときは UTC (Z)。比べるときは時刻として比べる"
+    },
+    "actor": {
+      "type": "string",
+      "pattern": "^(human|agent)/[a-z0-9][a-z0-9._-]*$"
+    },
+    "nullableHuman": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^human/[a-z0-9][a-z0-9._-]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableLine": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[^\\r\\n]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullablePositive": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "artifactRef": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?:(?!\\.{1,2}(?:/|$))[^/]+)(?:/(?!\\.{1,2}(?:/|$))[^/]+)*$"
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "required": [
+            "commit"
+          ]
+        }
+      ],
+      "dependentRequired": {
+        "commit": [
+          "repo"
+        ]
+      },
+      "additionalProperties": false
+    }
+  }
+}

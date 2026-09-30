@@ -1,0 +1,1575 @@
+{
+ "description": "T-020 で v4 を足す前の readTaskFile の結果 (v2・v3・旧形式のフィクスチャと不正な例)。P-12-9 (5) の回帰の基準",
+ "fixtures": {
+  "legacy.md": {
+   "format": {
+    "kind": "legacy"
+   },
+   "issues": []
+  },
+  "v2-closed-accepted.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v2-closed-legacy.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v2-implement-progress.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v2-legacy-open.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v2-new.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v2-pending-qa.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v2-reaccepted.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v2-requirement-revised.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v2-review-returned.md": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": []
+  },
+  "v3-implementation-closed-legacy.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-implementation-closed.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-implementation-new.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-implementation-pending-qa.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-implementation-review-returned.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-research-closed.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-research-execute-progress.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-research-legacy-open.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-research-new.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-research-requirement-revised.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  },
+  "v3-research-review-progress.md": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": []
+  }
+ },
+ "cases": {
+  "invalid.json: 対応していない版": {
+   "format": {
+    "kind": "unsupported",
+    "version": 5
+   },
+   "issues": [
+    {
+     "code": "WF_VERSION",
+     "path": "workflowVersion",
+     "message": "対応していない workflowVersion です: 5 (workflowVersion 2 として検証しました)"
+    }
+   ]
+  },
+  "invalid.json: 全体の状態が不正": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "status",
+     "message": "status は open / closed のいずれかです: \"doing\""
+    }
+   ]
+  },
+  "invalid.json: 工程が不正": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "phase",
+     "message": "phase は plan / implement / review / acceptance か空 のいずれかです: \"deploy\""
+    }
+   ]
+  },
+  "invalid.json: 工程の状態が不正": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "workflow.plan.status",
+     "message": "workflow.plan.status は waiting / ready / progress / pending / done のいずれかです: \"started\""
+    }
+   ]
+  },
+  "invalid.json: actor の形が不正": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ACTOR",
+     "path": "workflow.implement.assignee",
+     "message": "workflow.implement.assignee は human/<識別子> か agent/<識別子> か空にしてください: \"claude\""
+    }
+   ]
+  },
+  "invalid.json: 必須の項目が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_MISSING",
+     "path": "workflow.review.attempt",
+     "message": "workflow.review.attempt がありません"
+    }
+   ]
+  },
+  "invalid.json: 入力の履歴 (inputSeq) の項目が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_MISSING",
+     "path": "workflow.plan.inputSeq",
+     "message": "workflow.plan.inputSeq がありません"
+    }
+   ]
+  },
+  "invalid.json: 上位の必須項目が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_MISSING",
+     "path": "requirementRevision",
+     "message": "requirementRevision がありません"
+    }
+   ]
+  },
+  "invalid.json: 試行回数が 0": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_TYPE",
+     "path": "workflow.plan.attempt",
+     "message": "workflow.plan.attempt は 1 以上の整数にしてください: 0"
+    }
+   ]
+  },
+  "invalid.json: inputSeq が 0": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_TYPE",
+     "path": "workflow.implement.inputSeq",
+     "message": "workflow.implement.inputSeq は 1 以上の整数か空にしてください: 0"
+    }
+   ]
+  },
+  "invalid.json: 配列ではない blockedBy": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_TYPE",
+     "path": "blockedBy",
+     "message": "blockedBy は配列 ([] か「- 値」の並び) にしてください"
+    }
+   ]
+  },
+  "invalid.json: 関連タスクの参照が不正": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_REF",
+     "path": "relatedTasks[0]",
+     "message": "relatedTasks[0] の参照の形が不正です: T-009"
+    }
+   ]
+  },
+  "invalid.json: 成果物がタスクの外を指す": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_REF",
+     "path": "workflow.plan.artifactRefs[0].path",
+     "message": "workflow.plan.artifactRefs[0].path はタスクのディレクトリからの相対パス (.. や絶対パスは不可) にしてください: \"../secret.md\""
+    },
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.plan.artifactRefs",
+     "message": "plan の成果物が完了の履歴 seq 2 の記録と違います (完了の後に成果物を差し替えるときは新しい試行にする)"
+    }
+   ]
+  },
+  "invalid.json: 成果物が絶対パス": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_REF",
+     "path": "workflow.plan.artifactRefs[0].path",
+     "message": "workflow.plan.artifactRefs[0].path はタスクのディレクトリからの相対パス (.. や絶対パスは不可) にしてください: \"/etc/passwd\""
+    },
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.plan.artifactRefs",
+     "message": "plan の成果物が完了の履歴 seq 2 の記録と違います (完了の後に成果物を差し替えるときは新しい試行にする)"
+    }
+   ]
+  },
+  "invalid.json: commit に repo が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_REF",
+     "path": "workflow.implement.artifactRefs[0].repo",
+     "message": "workflow.implement.artifactRefs[0] の commit にはどの repo か (repo) が必要です"
+    }
+   ]
+  },
+  "invalid.json: 成果物に使えない項目": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_UNKNOWN",
+     "path": "workflow.implement.artifactRefs[0]",
+     "message": "workflow.implement.artifactRefs[0] に使えない項目があります: url"
+    }
+   ]
+  },
+  "invalid.json: 未知の工程": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_UNKNOWN",
+     "path": "workflow",
+     "message": "workflow に使えない工程があります: deploy (工程は plan / implement / review / acceptance)"
+    }
+   ]
+  },
+  "invalid.json: 履歴が空": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_ORDER",
+     "path": "history",
+     "message": "history には作成 (create) か移行 (legacy_import) の記録が 1 件以上必要です"
+    }
+   ]
+  },
+  "invalid.json: 履歴の actor が空": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ACTOR",
+     "path": "history[0].actor",
+     "message": "history[0].actor は human/<識別子> か agent/<識別子>にしてください: null"
+    }
+   ]
+  },
+  "invalid.json: 履歴の出来事が不正": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "history[0].event",
+     "message": "history[0].event は create / assign / claim / block / resume / complete / decide / reopen / revise / legacy_import のいずれかです: \"approve\""
+    }
+   ]
+  },
+  "invalid.json: 理由に改行": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_TYPE",
+     "path": "history[0].reason",
+     "message": "history[0].reason は 1 行の文字列か空にしてください"
+    }
+   ]
+  },
+  "invalid.json: 履歴の時刻が日付だけ": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_DATETIME",
+     "path": "history[0].at",
+     "message": "history[0].at はタイムゾーン付きの日時 (例: 2026-09-28T06:12:00Z) にしてください: \"2026-09-28\""
+    }
+   ]
+  },
+  "invalid.json: 履歴の時刻にタイムゾーンが無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_DATETIME",
+     "path": "history[0].at",
+     "message": "history[0].at はタイムゾーン付きの日時 (例: 2026-09-28T06:12:00Z) にしてください: \"2026-09-28T01:00:00\""
+    }
+   ]
+  },
+  "invalid.json: 存在しない日付": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_DATE",
+     "path": "createdAt",
+     "message": "createdAt は YYYY-MM-DD の日付にしてください: \"2026-02-30\""
+    }
+   ]
+  },
+  "invalid.json: 存在しない日時": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_DATETIME",
+     "path": "history[0].at",
+     "message": "history[0].at はタイムゾーン付きの日時 (例: 2026-09-28T06:12:00Z) にしてください: \"2026-02-30T00:00:00Z\""
+    }
+   ]
+  },
+  "invalid.json: 工程を飛ばしている": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ORDER",
+     "path": "workflow.implement.status",
+     "message": "現在の工程 review より前の implement が done ではありません (progress)"
+    },
+    {
+     "code": "WF_ORDER",
+     "path": "workflow.review.status",
+     "message": "現在の工程 review は ready / progress / pending のいずれかです (waiting)"
+    }
+   ]
+  },
+  "invalid.json: 後の工程が先に進んでいる": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ORDER",
+     "path": "workflow.review.status",
+     "message": "現在の工程 implement より後の review は waiting です (ready)"
+    },
+    {
+     "code": "WF_DONE",
+     "path": "workflow.review.inputRevision",
+     "message": "ready の工程 review には対象にする要件の版 (inputRevision) が必要です"
+    }
+   ]
+  },
+  "invalid.json: open なのに工程が空": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_OPEN_PHASE",
+     "path": "phase",
+     "message": "open のタスクには現在の工程 (phase) が必要です"
+    }
+   ]
+  },
+  "invalid.json: pending なのに待ちの相手が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_BLOCKED",
+     "path": "blockedBy",
+     "message": "工程 implement が pending なのに blockedBy が空です"
+    }
+   ]
+  },
+  "invalid.json: pending ではないのに待ちの相手がある": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_BLOCKED",
+     "path": "blockedBy",
+     "message": "工程 implement が pending ではないのに blockedBy があります"
+    }
+   ]
+  },
+  "invalid.json: done なのに完了した人が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_DONE",
+     "path": "workflow.plan.completedBy",
+     "message": "done の工程 plan には完了した人 (completedBy) が必要です"
+    },
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.plan.completedBy",
+     "message": "plan の completedBy (null) が完了の履歴 seq 2 の actor (agent/codex) と違います"
+    }
+   ]
+  },
+  "invalid.json: 成果物の無い通常の完了": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_DONE",
+     "path": "workflow.review.artifactRefs",
+     "message": "done の工程 review には成果物・引継資料 (artifactRefs) が必要です"
+    },
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.review.artifactRefs",
+     "message": "review の成果物が完了の履歴 seq 4 の記録と違います (完了の後に成果物を差し替えるときは新しい試行にする)"
+    }
+   ]
+  },
+  "invalid.json: 作業中の工程に要件の版が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_DONE",
+     "path": "workflow.plan.inputRevision",
+     "message": "ready の工程 plan には対象にする要件の版 (inputRevision) が必要です"
+    }
+   ]
+  },
+  "invalid.json: progress の工程に担当が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ASSIGNEE",
+     "path": "workflow.implement.assignee",
+     "message": "progress の工程 implement には担当 (assignee) が必要です"
+    }
+   ]
+  },
+  "invalid.json: pending の工程に担当が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_ASSIGNEE",
+     "path": "workflow.implement.assignee",
+     "message": "pending の工程 implement には担当 (assignee) が必要です"
+    }
+   ]
+  },
+  "invalid.json: レビューの結果が completed": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_OUTCOME",
+     "path": "workflow.review.outcome",
+     "message": "done の工程 review の結果は approved / legacy_import のいずれかです (completed)"
+    }
+   ]
+  },
+  "invalid.json: 進行中の工程に前の結果が残っている": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_DONE",
+     "path": "workflow.implement.outcome",
+     "message": "ready の工程 implement には outcome を書きません (前の結果は history に残す)"
+    }
+   ]
+  },
+  "invalid.json: 完了の履歴と completedBy が違う": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.review.completedBy",
+     "message": "review の completedBy (agent/codex) が完了の履歴 seq 4 の actor (agent/other) と違います"
+    }
+   ]
+  },
+  "invalid.json: 今の試行の完了の履歴が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.plan.status",
+     "message": "done の工程 plan (試行 2) に対応する完了の履歴がありません"
+    }
+   ]
+  },
+  "invalid.json: 出来事と工程が合わない": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.review.status",
+     "message": "done の工程 review (試行 1) に対応する完了の履歴がありません"
+    },
+    {
+     "code": "WF_HISTORY_EVENT",
+     "path": "history[3].event",
+     "message": "complete は plan / implement の出来事です (review)"
+    }
+   ]
+  },
+  "invalid.json: 実装者が自分でレビューした": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_SEPARATION",
+     "path": "workflow.review.completedBy",
+     "message": "実装を完了した agent/claude が同じ実装をレビューしています"
+    }
+   ]
+  },
+  "invalid.json: AI が受入確認を完了した": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.acceptance.completedBy",
+     "message": "acceptance の completedBy (agent/codex) が完了の履歴 seq 5 の actor (human/saiki) と違います"
+    },
+    {
+     "code": "WF_HUMAN",
+     "path": "workflow.acceptance.completedBy",
+     "message": "受入確認を完了できるのは人 (human/…) です: agent/codex"
+    }
+   ]
+  },
+  "invalid.json: 受入確認の担当が AI": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HUMAN",
+     "path": "workflow.acceptance.assignee",
+     "message": "受入確認の担当は人 (human/…) です: agent/codex"
+    }
+   ]
+  },
+  "invalid.json: 実装の新しい試行に古いレビュー承認を流用する": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.implement.status",
+     "message": "done の工程 implement (試行 2) に対応する完了の履歴がありません"
+    }
+   ]
+  },
+  "invalid.json: 要件の版はそのままで完了した成果物を差し替える": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.implement.artifactRefs",
+     "message": "implement の成果物が完了の履歴 seq 3 の記録と違います (完了の後に成果物を差し替えるときは新しい試行にする)"
+    }
+   ]
+  },
+  "invalid.json: 要件の版を上げたのに計画だけ古い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_STALE",
+     "path": "workflow.plan.inputRevision",
+     "message": "plan の inputRevision (1) が今の要件の版 (2) と違います"
+    }
+   ]
+  },
+  "invalid.json: 要件の版を上げたのに実装が古い計画を受けている": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_INPUT",
+     "path": "workflow.implement.inputSeq",
+     "message": "implement は前工程 plan の今の試行 2 の完了 (seq 5) を受け取っていません (inputSeq: 2)"
+    }
+   ]
+  },
+  "invalid.json: 要件の版を上げたのに実装が古い版を対象にしている": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_STALE",
+     "path": "workflow.implement.inputRevision",
+     "message": "implement の inputRevision (1) が今の要件の版 (2) と違います"
+    }
+   ]
+  },
+  "invalid.json: やり直す前の実装をレビューで承認している": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_INPUT",
+     "path": "workflow.review.inputSeq",
+     "message": "review は前工程 implement の今の試行 2 の完了 (seq 6) を受け取っていません (inputSeq: 3)"
+    }
+   ]
+  },
+  "invalid.json: 新しいレビューに対して古い受入": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_INPUT",
+     "path": "workflow.acceptance.inputSeq",
+     "message": "acceptance は前工程 review の今の試行 2 の完了 (seq 7) を受け取っていません (inputSeq: 4)"
+    }
+   ]
+  },
+  "invalid.json: 古い版に対するレビュー承認": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_STALE",
+     "path": "workflow.plan.inputRevision",
+     "message": "plan の inputRevision (1) が今の要件の版 (2) と違います"
+    },
+    {
+     "code": "WF_STALE",
+     "path": "workflow.implement.inputRevision",
+     "message": "implement の inputRevision (1) が今の要件の版 (2) と違います"
+    },
+    {
+     "code": "WF_STALE",
+     "path": "workflow.review.inputRevision",
+     "message": "review の inputRevision (1) が今の要件の版 (2) と違います"
+    },
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.acceptance.inputRevision",
+     "message": "acceptance の inputRevision (2) が完了の履歴 seq 5 の版 (1) と違います"
+    }
+   ]
+  },
+  "invalid.json: 入力版が要件の版より新しい": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_STALE",
+     "path": "workflow.implement.inputRevision",
+     "message": "implement の inputRevision (3) が今の要件の版 (1) と違います"
+    }
+   ]
+  },
+  "invalid.json: inputSeq が存在しない履歴を指す": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_INPUT",
+     "path": "workflow.implement.inputSeq",
+     "message": "implement は前工程 plan の今の試行 1 の完了 (seq 2) を受け取っていません (inputSeq: 99)"
+    },
+    {
+     "code": "WF_INPUT",
+     "path": "workflow.implement.inputSeq",
+     "message": "implement の inputSeq が存在しない履歴を指しています: 99"
+    }
+   ]
+  },
+  "invalid.json: plan に inputSeq がある": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_INPUT",
+     "path": "workflow.plan.inputSeq",
+     "message": "plan は前工程が無いので inputSeq を書きません"
+    }
+   ]
+  },
+  "invalid.json: waiting の工程に inputSeq がある": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_INPUT",
+     "path": "workflow.implement.inputSeq",
+     "message": "waiting の工程 implement には inputSeq を書きません"
+    }
+   ]
+  },
+  "invalid.json: 通常のタスクに legacy_import が混ざっている": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.review.outcome",
+     "message": "review の legacy_import に対応する移行の記録 (history の legacy_import、試行 1) がありません"
+    }
+   ]
+  },
+  "invalid.json: 通常のタスクの途中に移行の記録を足す": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.review.status",
+     "message": "done の工程 review (試行 1) に対応する完了の履歴がありません"
+    },
+    {
+     "code": "WF_LEGACY",
+     "path": "history[3].event",
+     "message": "legacy_import は移行した時の記録として履歴の先頭にだけ書けます (通常の操作では使えない)"
+    }
+   ]
+  },
+  "invalid.json: 移行の記録と違う工程に legacy_import": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.plan.outcome",
+     "message": "plan の legacy_import に対応する移行の記録 (history の legacy_import、試行 1) がありません"
+    }
+   ]
+  },
+  "invalid.json: 移行の記録と違う試行に legacy_import": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.plan.outcome",
+     "message": "plan の legacy_import に対応する移行の記録 (history の legacy_import、試行 1) がありません"
+    },
+    {
+     "code": "WF_HISTORY_ATTEMPT",
+     "path": "history[0].attempt",
+     "message": "history の plan の試行 2 が現在の試行 1 より大きい"
+    }
+   ]
+  },
+  "invalid.json: 移行以外の出来事に legacy_import の結果": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.implement.status",
+     "message": "done の工程 implement (試行 1) に対応する完了の履歴がありません"
+    },
+    {
+     "code": "WF_LEGACY",
+     "path": "history[2].outcome",
+     "message": "結果 legacy_import は移行の記録 (event: legacy_import) にだけ使えます (complete)"
+    }
+   ]
+  },
+  "invalid.json: 旧 done の移行で承認を捏造した": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.acceptance.outcome",
+     "message": "legacy_done で閉じたタスクの工程の結果は legacy_import です (acceptance: approved)"
+    },
+    {
+     "code": "WF_DONE",
+     "path": "workflow.acceptance.artifactRefs",
+     "message": "done の工程 acceptance には成果物・引継資料 (artifactRefs) が必要です"
+    },
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.acceptance.status",
+     "message": "done の工程 acceptance (試行 1) に対応する完了の履歴がありません"
+    }
+   ]
+  },
+  "invalid.json: 承認されずに accepted で閉じた": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_CLOSED",
+     "path": "workflow.acceptance.outcome",
+     "message": "accepted で閉じるには受入確認 (acceptance) の結果が approved である必要があります"
+    },
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.acceptance.outcome",
+     "message": "acceptance の legacy_import に対応する移行の記録 (history の legacy_import、試行 1) がありません"
+    }
+   ]
+  },
+  "invalid.json: 閉じたのに工程が残っている": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_CLOSED",
+     "path": "phase",
+     "message": "closed のタスクの phase は空にします"
+    }
+   ]
+  },
+  "invalid.json: 閉じたのに閉じた日が無い": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_CLOSED",
+     "path": "completedAt",
+     "message": "closed のタスクには閉じた日 (completedAt) が必要です"
+    }
+   ]
+  },
+  "invalid.json: open なのに閉じた日がある": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_CLOSED",
+     "path": "completedAt",
+     "message": "open のタスクには completedAt を書きません"
+    }
+   ]
+  },
+  "invalid.json: 履歴が自分を参照している": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_REF",
+     "path": "history[5].refersTo",
+     "message": "history の refersTo は前の履歴 (seq 6 より小さい) だけを指せます: 6"
+    }
+   ]
+  },
+  "invalid.json: 履歴が後ろを参照している": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_REF",
+     "path": "history[4].refersTo",
+     "message": "history の refersTo は前の履歴 (seq 5 より小さい) だけを指せます: 6"
+    }
+   ]
+  },
+  "invalid.json: 履歴の seq が飛んでいる": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_ORDER",
+     "path": "history[2].seq",
+     "message": "history の seq は 1 から順に並べます (3 の位置に 9)"
+    }
+   ]
+  },
+  "invalid.json: 履歴の日時が戻っている": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_ORDER",
+     "path": "history[3].at",
+     "message": "history の日時が前の履歴より前になっています (2026-09-01T00:00:00Z)"
+    }
+   ]
+  },
+  "invalid.json: タイムゾーンを考えると日時が戻っている (文字列では後)": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_ORDER",
+     "path": "history[4].at",
+     "message": "history の日時が前の履歴より前になっています (2026-10-01T09:30:00+09:00)"
+    }
+   ]
+  },
+  "invalid.json: 履歴の試行回数が現在より大きい": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_ATTEMPT",
+     "path": "history[5].attempt",
+     "message": "history の implement の試行 3 が現在の試行 2 より大きい"
+    }
+   ]
+  },
+  "invalid.json: 履歴の試行回数が戻っている": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_ATTEMPT",
+     "path": "history[4].attempt",
+     "message": "history の review の試行回数が戻っています (2 の後に 1)"
+    }
+   ]
+  },
+  "invalid.json: 履歴の最初が作成ではない": {
+   "format": {
+    "kind": "v2"
+   },
+   "issues": [
+    {
+     "code": "WF_HISTORY_ORDER",
+     "path": "history[0].event",
+     "message": "history の最初は create か legacy_import です (claim)"
+    }
+   ]
+  },
+  "invalid-v3.json: 種別が無い": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_MISSING",
+     "path": "type",
+     "message": "type がありません"
+    }
+   ]
+  },
+  "invalid-v3.json: 種別が空": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "type",
+     "message": "type は research / implementation のいずれかです (search・implement などの別名や未知の種別は受け付けません): null"
+    }
+   ]
+  },
+  "invalid-v3.json: 未知の種別": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "type",
+     "message": "type は research / implementation のいずれかです (search・implement などの別名や未知の種別は受け付けません): \"bugfix\""
+    }
+   ]
+  },
+  "invalid-v3.json: 種別の別名 search": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "type",
+     "message": "type は research / implementation のいずれかです (search・implement などの別名や未知の種別は受け付けません): \"search\""
+    }
+   ]
+  },
+  "invalid-v3.json: 種別の別名 implement": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "type",
+     "message": "type は research / implementation のいずれかです (search・implement などの別名や未知の種別は受け付けません): \"implement\""
+    }
+   ]
+  },
+  "invalid-v3.json: 種別の大文字違い": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "type",
+     "message": "type は research / implementation のいずれかです (search・implement などの別名や未知の種別は受け付けません): \"Implementation\""
+    }
+   ]
+  },
+  "invalid-v3.json: 種別が配列": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ENUM",
+     "path": "type",
+     "message": "type は research / implementation のいずれかです (search・implement などの別名や未知の種別は受け付けません): [\"research\"]"
+    }
+   ]
+  },
+  "invalid-v3.json: 対応していない版": {
+   "format": {
+    "kind": "unsupported",
+    "version": 5
+   },
+   "issues": [
+    {
+     "code": "WF_VERSION",
+     "path": "workflowVersion",
+     "message": "対応していない workflowVersion です: 5 (workflowVersion 2 として検証しました)"
+    }
+   ]
+  },
+  "invalid-v3.json: 版が文字列": {
+   "format": {
+    "kind": "unsupported",
+    "version": "3"
+   },
+   "issues": [
+    {
+     "code": "WF_VERSION",
+     "path": "workflowVersion",
+     "message": "対応していない workflowVersion です: \"3\" (workflowVersion 2 として検証しました)"
+    }
+   ]
+  },
+  "invalid-v3.json: v3 の現在の工程に implement": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_PHASE_RENAMED",
+     "path": "phase",
+     "message": "workflowVersion 3 の工程は execute です (implement は workflowVersion 2 の名前。v2 のタスクは移行してから使う)"
+    }
+   ]
+  },
+  "invalid-v3.json: v3 の workflow に implement を追加": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_PHASE_RENAMED",
+     "path": "workflow.implement",
+     "message": "workflowVersion 3 の工程は execute です (implement は workflowVersion 2 の名前。v2 のタスクは移行してから使う)"
+    }
+   ]
+  },
+  "invalid-v3.json: v3 の execute が無い": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_MISSING",
+     "path": "workflow.execute",
+     "message": "workflow.execute がありません"
+    }
+   ]
+  },
+  "invalid-v3.json: v3 の履歴に implement": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_PHASE_RENAMED",
+     "path": "history[2].phase",
+     "message": "workflowVersion 3 の工程は execute です (implement は workflowVersion 2 の名前。v2 のタスクは移行してから使う)"
+    }
+   ]
+  },
+  "invalid-v3.json: 未知の工程": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_UNKNOWN",
+     "path": "workflow",
+     "message": "workflow に使えない工程があります: deploy (工程は plan / execute / review / acceptance)"
+    }
+   ]
+  },
+  "invalid-v3.json: 計画を終えずに実行": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ORDER",
+     "path": "workflow.plan.status",
+     "message": "現在の工程 execute より前の plan が done ではありません (ready)"
+    }
+   ]
+  },
+  "invalid-v3.json: 実行を飛ばしてレビュー": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ORDER",
+     "path": "workflow.execute.status",
+     "message": "現在の工程 review より前の execute が done ではありません (progress)"
+    }
+   ]
+  },
+  "invalid-v3.json: 調査の実行者が自分の調査を承認": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_SEPARATION",
+     "path": "workflow.review.completedBy",
+     "message": "実行 (execute) を完了した agent/claude が同じ成果物をレビューしています"
+    }
+   ]
+  },
+  "invalid-v3.json: 実装の実行者が自分の実装を承認": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_SEPARATION",
+     "path": "workflow.review.completedBy",
+     "message": "実行 (execute) を完了した agent/claude が同じ成果物をレビューしています"
+    }
+   ]
+  },
+  "invalid-v3.json: 調査の受入を AI が完了": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_HUMAN",
+     "path": "workflow.acceptance.assignee",
+     "message": "受入確認の担当は人 (human/…) です: agent/codex"
+    },
+    {
+     "code": "WF_HUMAN",
+     "path": "workflow.acceptance.completedBy",
+     "message": "受入確認を完了できるのは人 (human/…) です: agent/codex"
+    }
+   ]
+  },
+  "invalid-v3.json: 実装の受入の担当が AI": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_HUMAN",
+     "path": "workflow.acceptance.assignee",
+     "message": "受入確認の担当は人 (human/…) です: agent/codex"
+    }
+   ]
+  },
+  "invalid-v3.json: 調査をレビューなしで閉じる": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_CLOSED",
+     "path": "workflow.acceptance.outcome",
+     "message": "accepted で閉じるには受入確認 (acceptance) の結果が approved である必要があります"
+    },
+    {
+     "code": "WF_OUTCOME",
+     "path": "workflow.acceptance.outcome",
+     "message": "done の工程 acceptance の結果は approved / legacy_import のいずれかです (completed)"
+    }
+   ]
+  },
+  "invalid-v3.json: 調査の実行を成果物なしで完了": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_DONE",
+     "path": "workflow.execute.artifactRefs",
+     "message": "done の工程 execute には成果物・引継資料 (artifactRefs) が必要です"
+    }
+   ]
+  },
+  "invalid-v3.json: 完了の後に成果物を差し替え": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.execute.artifactRefs",
+     "message": "execute の成果物が完了の履歴 seq 3 の記録と違います (完了の後に成果物を差し替えるときは新しい試行にする)"
+    }
+   ]
+  },
+  "invalid-v3.json: 成果物のパスがタスクの外": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_REF",
+     "path": "workflow.execute.artifactRefs[0].path",
+     "message": "workflow.execute.artifactRefs[0].path はタスクのディレクトリからの相対パス (.. や絶対パスは不可) にしてください: \"../other/02-findings.md\""
+    },
+    {
+     "code": "WF_REF",
+     "path": "history[2].refs[0].path",
+     "message": "history[2].refs[0].path はタスクのディレクトリからの相対パス (.. や絶対パスは不可) にしてください: \"../other/02-findings.md\""
+    }
+   ]
+  },
+  "invalid-v3.json: commit に repo が無い": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_REF",
+     "path": "workflow.execute.artifactRefs[1].repo",
+     "message": "workflow.execute.artifactRefs[1] の commit にはどの repo か (repo) が必要です"
+    },
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.execute.artifactRefs",
+     "message": "execute の成果物が完了の履歴 seq 3 の記録と違います (完了の後に成果物を差し替えるときは新しい試行にする)"
+    }
+   ]
+  },
+  "invalid-v3.json: 実行の完了が complete ではなく decide": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.execute.status",
+     "message": "done の工程 execute (試行 1) に対応する完了の履歴がありません"
+    },
+    {
+     "code": "WF_HISTORY_EVENT",
+     "path": "history[2].event",
+     "message": "decide は review / acceptance の出来事です (execute)"
+    }
+   ]
+  },
+  "invalid-v3.json: レビューが古い実行の完了を受け取る": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_INPUT",
+     "path": "workflow.review.inputSeq",
+     "message": "review は前工程 execute の今の試行 1 の完了 (seq 3) を受け取っていません (inputSeq: 2)"
+    }
+   ]
+  },
+  "invalid-v3.json: 差戻し後の実行が古い計画の版": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_STALE",
+     "path": "workflow.execute.inputRevision",
+     "message": "execute の inputRevision (1) が今の要件の版 (2) と違います"
+    }
+   ]
+  },
+  "invalid-v3.json: 差戻し後に古いレビューの試行を使う": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_ORDER",
+     "path": "workflow.review.status",
+     "message": "現在の工程 execute より後の review は waiting です (done)"
+    },
+    {
+     "code": "WF_COMPLETION",
+     "path": "workflow.review.status",
+     "message": "done の工程 review (試行 1) に対応する完了の履歴がありません"
+    }
+   ]
+  },
+  "invalid-v3.json: 通常の履歴の途中に legacy_import": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_LEGACY",
+     "path": "history[3].event",
+     "message": "legacy_import は移行した時の記録として履歴の先頭にだけ書けます (通常の操作では使えない)"
+    }
+   ]
+  },
+  "invalid-v3.json: 移行でない工程を legacy_import で完了扱い": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.plan.outcome",
+     "message": "plan の legacy_import に対応する移行の記録 (history の legacy_import、試行 1) がありません"
+    }
+   ]
+  },
+  "invalid-v3.json: legacy_done なのに承認を記録": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.plan.outcome",
+     "message": "legacy_done で閉じたタスクの工程の結果は legacy_import です (plan: completed)"
+    },
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.execute.outcome",
+     "message": "legacy_done で閉じたタスクの工程の結果は legacy_import です (execute: completed)"
+    },
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.review.outcome",
+     "message": "legacy_done で閉じたタスクの工程の結果は legacy_import です (review: approved)"
+    },
+    {
+     "code": "WF_LEGACY",
+     "path": "workflow.acceptance.outcome",
+     "message": "legacy_done で閉じたタスクの工程の結果は legacy_import です (acceptance: approved)"
+    }
+   ]
+  },
+  "invalid-v3.json: pending なのに待ちが無い": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_BLOCKED",
+     "path": "blockedBy",
+     "message": "工程 execute が pending なのに blockedBy が空です"
+    }
+   ]
+  },
+  "invalid-v3.json: v2 の文書の版だけを 3 にした": {
+   "format": {
+    "kind": "v3"
+   },
+   "issues": [
+    {
+     "code": "WF_FIELD_MISSING",
+     "path": "type",
+     "message": "type がありません"
+    },
+    {
+     "code": "WF_PHASE_RENAMED",
+     "path": "phase",
+     "message": "workflowVersion 3 の工程は execute です (implement は workflowVersion 2 の名前。v2 のタスクは移行してから使う)"
+    },
+    {
+     "code": "WF_PHASE_RENAMED",
+     "path": "workflow.implement",
+     "message": "workflowVersion 3 の工程は execute です (implement は workflowVersion 2 の名前。v2 のタスクは移行してから使う)"
+    },
+    {
+     "code": "WF_FIELD_MISSING",
+     "path": "workflow.execute",
+     "message": "workflow.execute がありません"
+    },
+    {
+     "code": "WF_PHASE_RENAMED",
+     "path": "history[2].phase",
+     "message": "workflowVersion 3 の工程は execute です (implement は workflowVersion 2 の名前。v2 のタスクは移行してから使う)"
+    }
+   ]
+  }
+ }
+}

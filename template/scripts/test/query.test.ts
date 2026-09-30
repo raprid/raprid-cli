@@ -42,7 +42,7 @@ function setStatus(rel: string, from: string, to: string, kind: "task" | "qa" = 
 }
 
 test("--capabilities は query-v1 を返し、--protocol の形は変えない", () => {
-  assert.deepEqual(JSON.parse(ok(["--capabilities"]).stdout), { schemaVersion: 1, capabilities: ["query-v1", "guarded-write-v1"] });
+  assert.deepEqual(JSON.parse(ok(["--capabilities"]).stdout), { schemaVersion: 1, capabilities: ["query-v1", "guarded-write-v1", "query-v2", "workflow-v3", "query-v3", "workflow-v4"] });
   assert.deepEqual(JSON.parse(ok(["--protocol"]).stdout), { format: 1, protocol: 1 });
 });
 

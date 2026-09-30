@@ -5,6 +5,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { join } from "node:path";
 import { childEnv } from "../delegate.js";
 import type { Issue, ItemRecord, Kind, ShowResult, Snapshot } from "./types.js";
+import { stepArgs, type WorkflowStep } from "./workflow.js";
 
 export const readTimeoutMs = 15_000;
 
@@ -18,11 +19,15 @@ export class BackendError extends Error {
 }
 
 export interface WriteResult {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   ok: true;
   item: ItemRecord;
   issues: Issue[];
+  revision?: string; // 工程の操作 (schemaVersion 2) だけ
 }
+
+// scripts/ が返す JSON の版。query-v2 に対応していれば 2 (工程型タスクを含む)、していなければ 1
+export type SchemaVersion = 1 | 2;
 
 export interface Backend {
   capabilities(): Promise<string[]>;
@@ -32,6 +37,8 @@ export interface Backend {
   resolveQa(job: string, selector: string, answer: string, answeredBy: string, revision: string): Promise<WriteResult>;
   // blockedBy は 1 件ずつ --blocked-by で渡す (カンマを区切りに使わない)
   moveTask(job: string, selector: string, status: string, blockedBy: string[] | undefined, revision: string): Promise<WriteResult>;
+  // workflow-v3。工程型タスクの工程の操作 (task claim・complete・decide・block・resume・reopen・assign)
+  workflowStep(job: string, selector: string, step: WorkflowStep, actor: string, revision: string): Promise<WriteResult>;
   dispose(): void;
 }
 
@@ -47,11 +54,25 @@ export class ScriptBackend implements Backend {
   private readonly children = new Set<ChildProcess>();
   private disposed = false;
   private readonly writers = new Set<ChildProcess>();
+  private schema: SchemaVersion = 1;
 
   constructor(root: string, options: ScriptBackendOptions = {}) {
     this.root = root;
     this.script = options.script ?? join(root, "scripts", "cli.ts");
     this.timeoutMs = options.timeoutMs ?? readTimeoutMs;
+  }
+
+  // capability を見て決めた JSON の版 (main.tsx が設定する)
+  useSchema(version: SchemaVersion): void {
+    this.schema = version;
+  }
+
+  get schemaVersion(): SchemaVersion {
+    return this.schema;
+  }
+
+  private versionArgs(): string[] {
+    return this.schema === 2 ? ["--schema-version", "2"] : [];
   }
 
   // 実行中の子プロセス数 (試験用)
@@ -132,16 +153,16 @@ export class ScriptBackend implements Backend {
   }
 
   async snapshot(): Promise<Snapshot> {
-    const result = (await this.run(["ui", "snapshot", "--json"])) as Snapshot;
-    if (result?.schemaVersion !== 1 || !Array.isArray(result.tasks) || !Array.isArray(result.qas)) {
+    const result = (await this.run(["ui", "snapshot", "--json", ...this.versionArgs()])) as Snapshot;
+    if (result?.schemaVersion !== this.schema || !Array.isArray(result.tasks) || !Array.isArray(result.qas)) {
       throw new BackendError("INVALID_RESPONSE", "ui snapshot の形式が不正です");
     }
     return result;
   }
 
   async show(kind: Kind, job: string, selector: string): Promise<ShowResult> {
-    const result = (await this.run([kind, "show", job, selector, "--json"])) as ShowResult;
-    if (result?.schemaVersion !== 1 || !result.item) throw new BackendError("INVALID_RESPONSE", "show の形式が不正です");
+    const result = (await this.run([kind, "show", job, selector, "--json", ...this.versionArgs()])) as ShowResult;
+    if (result?.schemaVersion !== this.schema || !result.item) throw new BackendError("INVALID_RESPONSE", "show の形式が不正です");
     return result;
   }
 
@@ -153,6 +174,14 @@ export class ScriptBackend implements Backend {
   async moveTask(job: string, selector: string, status: string, blockedBy: string[] | undefined, revision: string): Promise<WriteResult> {
     const args = ["task", "move", job, selector, status, ...(blockedBy ?? []).flatMap((value) => ["--blocked-by", value]), "--if-match", revision, "--json"];
     return (await this.run(args, { write: true })) as WriteResult;
+  }
+
+  async workflowStep(job: string, selector: string, step: WorkflowStep, actor: string, revision: string): Promise<WriteResult> {
+    const [op, ...rest] = stepArgs(step, actor);
+    const args = ["task", op, job, selector, ...rest, "--if-match", revision, "--json"];
+    const result = (await this.run(args, { write: true })) as WriteResult;
+    if (result?.schemaVersion !== 2 || !result.item) throw new BackendError("INVALID_RESPONSE", "工程の操作の結果の形式が不正です");
+    return result;
   }
 
   // 読み取りの子プロセスを止める。書き込みは途中で止めると変更が中途半端になりうるので、止めずに完了させる

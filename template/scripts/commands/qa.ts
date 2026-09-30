@@ -50,7 +50,7 @@ function add(argv: string[]): void {
   const createdBy = actor(values["created-by"] ?? process.env.RAPRID_ACTOR, "--created-by");
   const job = Job.existing(projectRoot(), jobName);
   assertStatusDirs(job, "qa");
-  job.lock(() => {
+  job.writeLock(() => {
     assertNameFree(job, "qa", name);
     const id = job.nextId("qa");
     const content = renderTemplate("qa/index.md", {
@@ -133,7 +133,7 @@ function waitingTasks(root: string, job: Job, id: string, name: string): { job: 
 function transition(jobName: string, selector: string, status: string, answer: string | undefined, answeredBy: string | undefined, options: TransitionOptions = {}): void {
   const root = projectRoot();
   const job = Job.existing(root, jobName);
-  const done = job.lock(() => {
+  const done = job.writeLock(() => {
     const item = job.find("qa", selector);
     assertStatusDirs(job, "qa");
     // revision の確認と書き換えは、ロック内で読み取った同じ内容に対して行う
