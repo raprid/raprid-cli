@@ -29,6 +29,9 @@ import {
 import { git, wiki } from "./wiki.js";
 import { migrate } from "./migrate.js";
 import { help } from "./help.js";
+import { Slack, pullSlack, createDraft, previewDraft, sendDraft, reconcileDraft, searchSlack } from "./slack.js";
+import { migrateLayout } from "./layout.js";
+import { slackDefaultChannel, slackDefaultWorkspace } from "./slack-auth.js";
 export { help };
 export async function run(argv: string[]): Promise<number> {
   try {
@@ -50,6 +53,12 @@ export async function run(argv: string[]): Promise<number> {
         "remote-id": { type: "string" },
         message: { type: "string" },
         apply: { type: "boolean" },
+        channel: { type: "string" },
+        workspace: { type: "string" },
+        thread: { type: "string" },
+        oldest: { type: "string" },
+        latest: { type: "string" },
+        revision: { type: "string" },
         help: { type: "boolean", short: "h" },
       },
     });
@@ -70,6 +79,8 @@ export async function run(argv: string[]): Promise<number> {
       result = migrate(action, selector, v.repo ?? "", !!v.apply);
     } else {
       const root = findRoot();
+      const migration = read<any>(root, ".raprid/layout-migration.json", null);
+      if (migration && !migration.complete && group !== "layout") throw new Error("中断した構成移行があります。raprid layout migrate --apply を再実行してください");
       if (group === "issue" && action === "edit") {
         const id = select(root, selector ?? ""),
           file = safe(
@@ -85,7 +96,20 @@ export async function run(argv: string[]): Promise<number> {
         result = { id };
       } else
         result = await locked(root, async () => {
-          if (group === "issue") {
+          if (group === "layout" && action === "migrate") return migrateLayout(root, !!v.apply);
+          if (group === "slack") {
+            const channel = v.channel ?? slackDefaultChannel(root);
+            const workspace = v.workspace ?? slackDefaultWorkspace(root);
+            if (action === "pull") return pullSlack(root, new Slack(root), channel, v.oldest, v.latest);
+            if (action === "search") return searchSlack(root, selector ?? "");
+            if (action === "draft") {
+              if (!v["body-file"]) throw new Error("--body-fileが必要です");
+              return { id: createDraft(root, workspace, channel, readFileSync(v["body-file"], "utf8"), v.thread) };
+            }
+            if (action === "preview") return previewDraft(root, workspace, channel, selector ?? "");
+            if (action === "send") return sendDraft(root, new Slack(root), workspace, channel, selector ?? "", v.revision ?? "");
+            if (action === "reconcile") return reconcileDraft(root, new Slack(root), selector ?? "", v["remote-id"] ?? "");
+          } else if (group === "issue") {
             if (action === "list") return status(root);
             if (action === "create")
               return {

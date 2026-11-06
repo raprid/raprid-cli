@@ -12,7 +12,11 @@ const { width } = await load<typeof import("../src/tui/text.js")>("../dist/tui/t
 
 const keys = { up: "\u001b[A", down: "\u001b[B", enter: "\r", escape: "\u001b", tab: "\t", shiftTab: "\u001b[Z", pageDown: "\u001b[6~" };
 
-afterEach(() => cleanup());
+const activeStores: Array<{ dispose(): void }> = [];
+afterEach(() => {
+  cleanup();
+  for (const store of activeStores.splice(0)) store.dispose();
+});
 
 const longTitle = "日本語と絵文字👨‍👩‍👧‍👦と結合文字éを含み、パネルの幅を大きく超えるとても長いタイトルを省略して表示する確認";
 const base = snapshot({
@@ -30,6 +34,7 @@ function mount(options: { data?: Snapshot; columns?: number; rows?: number; job?
   const data = options.data ?? base;
   const backend = new FakeBackend(data);
   const snapshots = new SnapshotStore(backend, { intervalMs: 60_000 });
+  activeStores.push(snapshots);
   const details = new DetailStore(backend, { debounceMs: 5 });
   snapshots.seed(data);
   let unmounted = 0;

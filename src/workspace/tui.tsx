@@ -158,7 +158,7 @@ export function WorkspaceApp({ root }: { root: string }) {
     `結果確認待ち操作: ${snapshot.operations.length}`,
   ] : wrap(body);
   return <Box flexDirection="column" height={rows}>
-    <Box justifyContent="space-between"><Text bold>raprid v2.2 — {config(root).repository}</Text><Text color="cyan">{tab === "issues" ? "Issues" : "Wiki"}  [w切替]</Text></Box>
+    <Box justifyContent="space-between"><Text bold>raprid v3 — {config(root).repository}</Text><Text color="cyan">{tab === "issues" ? "Issues" : "Wiki"}  [w切替]</Text></Box>
     {help ? <Box flexDirection="column"><Text bold>操作ヘルプ</Text><Text>{"Tab / Shift+Tab / h / l: ペイン移動\nj / k または ↑ / ↓: 選択・スクロール\nw: Issues / Wiki  1〜5: 詳細タブ\n/: 検索  [ ]: ビュー切替  x: 検索解除\nn: 新規  e: 本文  t: タイトル  a: コメント  c: 状態\ng: 取得  p: 送信計画  r: 再読込  q: 終了\nEsc または ?: ヘルプを閉じる"}</Text></Box>
       : editing ? <Box flexDirection="column"><Text color="yellow">{editing === "new" ? "新規Issue (1行目:タイトル、以降:本文)" : editing === "comment" ? "コメント" : editing === "body" ? "本文編集" : "タイトル編集"}  Ctrl+S:保存 Esc:取消</Text><Text>{wrap(input).slice(-height).join("\n")}▌</Text></Box>
       : preview ? <Box flexDirection="column"><Text color="yellow">送信計画 {preview.changes.length}件 — y:送信 n:取消</Text><Text>{wrap(JSON.stringify(preview.changes, null, 2)).slice(0, height).join("\n")}</Text></Box>

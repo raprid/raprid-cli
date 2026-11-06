@@ -1,6 +1,6 @@
-# raprid v2
+# raprid v3
 
-GitHub IssuesとWikiをローカルに蓄え、オフラインで閲覧・編集してから明示的に同期するCLI・TUI。v0.4.0（fa79e75）を起点とする。
+GitHub Issues・Wiki と Slack の会話をローカルで扱い、明示的な操作で同期・送信する CLI・TUI。v0.4.0（fa79e75）を起点とする。
 
 Node.js 24以上、Git、macOSまたはLinuxが必要。GitHub認証は`GH_TOKEN` / `GITHUB_TOKEN`、または`gh auth login`を使う。トークンはワークスペースへ保存しない。WikiはGitのSSH認証（または取得済みHTTPS originの認証）を使用する。
 
@@ -9,7 +9,7 @@ Node.js 24以上、Git、macOSまたはLinuxが必要。GitHub認証は`GH_TOKEN
 npmレジストリへは公開せず、GitHub Releaseのtarballを配布する。
 
 ```sh
-npm install -g --allow-remote=all https://github.com/raprid/raprid-cli/releases/download/v2.2.0/raprid-2.2.0.tgz
+npm install -g --allow-remote=all https://github.com/raprid/raprid-cli/releases/download/v3.0.0/raprid-3.0.0.tgz
 raprid --version
 ```
 
@@ -32,7 +32,8 @@ raprid tui
 ```text
 workspace/
 ├── README.md / AGENTS.md / CLAUDE.md
-├── issues/<local-id>/
+├── github/
+│   ├── issues/<local-id>/
 │   ├── index.md                  # 本文（frontmatterなし）
 │   ├── issue.json                # 編集する基本属性
 │   ├── remote.json               # GitHubのID・番号・取得情報（自動更新）
@@ -41,14 +42,16 @@ workspace/
 │   └── comments/<local-id>/
 │       ├── index.md
 │       └── metadata.json
-├── wiki/                         # Wiki専用Gitの作業ツリー
+│   └── wiki/                     # Wiki専用Gitの作業ツリー
+├── slack/                        # Slackの取得情報・下書き
 ├── repos/                        # 関連コード
 ├── logs/                         # ローカルの作業記録
 └── .raprid/
     ├── config.json
     ├── catalog/                  # リポジトリ・ラベル・種別などの定義
     ├── sync/
-    │   ├── issues/<local-id>/     # base/・remote/・conflicts/・state.json
+    │   ├── github/
+│   ├── issues/<local-id>/     # base/・remote/・conflicts/・state.json
     │   ├── operations/            # 送信記録と結果確認待ち
     │   ├── writes/                # 中断したローカル保存の復旧
     │   └── wiki.json
@@ -56,7 +59,7 @@ workspace/
     └── locks/
 ```
 
-Issueのフォルダ名は固定のローカルUUID。GitHubの番号は`remote.json`に保存する。親子関係でフォルダを入れ子にしない。`.raprid/sync/`はキャッシュではなく復旧に必要な永続情報なので、issues/と一緒にバックアップする。
+GitHub Issueのフォルダ名は固定のローカルUUID。GitHubの番号は`remote.json`に保存する。親子関係でフォルダを入れ子にしない。`.raprid/sync/`はキャッシュではなく復旧に必要な永続情報なので、issues/と一緒にバックアップする。
 
 `issue.json`の例:
 
@@ -78,6 +81,24 @@ Issueのフォルダ名は固定のローカルUUID。GitHubの番号は`remote.
 `relations.json`は`{schemaVersion:1,parent:null,children:[],blockedBy:[]}`。各参照は`{id,number,url}`。`id`はGitHubの数値IDで、Issue番号とは異なる。childrenは順序を持ち、blockedByは着手の依存関係。取得後に編集する。別リポジトリの参照も同じGitHubホストのURLを使う。
 
 `fields.json`は`{schemaVersion:1,values:[{fieldId:123,value:"High"}]}`。選択型は選択肢の名前、複数選択は名前の配列。組織や権限により利用できない場合はstate.jsonに取得不能を記録し、値ファイルを作らない。
+
+## Slack の取得と送信
+
+`.env.example` を `.env` にコピーし、`SLACK_USER_OAUTH_TOKEN` を設定する。`SLACK_WORKSPACE_ID` と `SLACK_CHANNEL_ID` に既定のワークスペース ID とチャンネル ID を設定できる。環境変数がある場合はそちらが優先され、`--workspace` と `--channel` は設定値より優先される。`.env` は Git 管理しない。Slack アプリには対象チャンネルを読む history 権限と、送信する場合は `chat:write` が必要。トークンは出力やコミットに含めない。
+
+```sh
+raprid slack pull --channel C0123456789
+raprid slack search "検索語"
+raprid slack draft --workspace T0123456789 --channel C0123456789 --body-file reply.md --thread 1730000000.000100
+raprid slack preview <下書きID> --workspace T0123456789 --channel C0123456789
+raprid slack send <下書きID> --workspace T0123456789 --channel C0123456789 --revision <プレビューで表示されたハッシュ>
+```
+
+`--thread` を省略するとチャンネルへの新規投稿。取得データと下書きは `slack/workspaces/<workspace-id>/channels/<channel-id>/` に保存する。送信前にプレビューした本文と宛先を確認する。送信後の通信断は結果確認待ちになり、自動再送されない。Slack 上の投稿 ID を確認できたら `raprid slack reconcile <下書きID> --remote-id <投稿のts>` で投稿者・本文・返信先を照合する。
+
+`--oldest` / `--latest` は Slack のタイムスタンプで取得範囲を絞る。全範囲取得時、返されなかった保存済み投稿は `presence.json` に不在として記録し、検索から除く。権限や Slack の保持期間によっても不在になるため、削除されたと断定しない。範囲指定時には不在判定しない。Slack の取得ページや返信が失敗した場合は反映せず、取得済みページを一時保存する。同じ条件で再実行すると保存済みページから再開する。レート制限の応答時は指定された待ち時間を空ける。添付ファイルは属性のみで本体を取得しない。
+
+v2 のワークスペースはそのまま操作可能。`raprid layout migrate` で計画を見て、`raprid layout migrate --apply` で `issues/` と `wiki/` を `github/` に移す。中断した場合は同じ `--apply` を再実行する。移行前にバックアップを推奨する。
 
 ## ローカル編集
 
@@ -133,7 +154,7 @@ GitHub上でWikiの最初のページを作成してから取得する。
 
 ```sh
 raprid wiki pull
-# wiki/のMarkdownを編集する
+# github/wiki/のMarkdownを編集する
 raprid wiki status
 raprid wiki commit --message "同期設計を更新"
 raprid wiki push --dry-run
@@ -180,6 +201,6 @@ npm pack
 
 旧雛形はv0.4.0の互換用として保持する。新形式の実装はsrc/workspace/、試験はtest/workspace*.test.ts。試験には競合・通信断・権限不足・中断復旧・実GitのWiki同期・非破壊移行・TUI編集競合を含む。
 
-リリースはコミット・タグを固定して`raprid-2.2.0.tgz`と同一内容の`raprid.tgz`、SHA256SUMSをGitHub Releaseへ添付する。npm publishは行わない。
+リリースはコミット・タグを固定して`raprid-3.0.0.tgz`と同一内容の`raprid.tgz`、SHA256SUMSをGitHub Releaseへ添付する。npm publishは行わない。
 
 MIT License。

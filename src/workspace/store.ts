@@ -16,6 +16,7 @@ export interface Config {
   repository: string;
   host: string;
   apiVersion: string;
+  layout?: "services-v1";
 }
 export interface Issue {
   schemaVersion: 1;
@@ -57,6 +58,12 @@ export function hash(v: unknown): string {
     .digest("hex");
 }
 export function safe(root: string, path: string): string {
+  // 旧ワークスペースはそのまま利用し、新形式だけ GitHub データを移す。
+  const configPath = join(root, ".raprid/config.json");
+  if (/^(issues|wiki)(\/|$)/.test(path) && existsSync(configPath)) {
+    const c = JSON.parse(readFileSync(configPath, "utf8"));
+    if (c.layout === "services-v1") path = `github/${path}`;
+  }
   const base = resolve(root),
     target = resolve(root, path),
     rel = relative(base, target);
@@ -101,7 +108,8 @@ export function config(root: string): Config {
   if (
     c.schemaVersion !== 1 ||
     !/^[\w.-]+\/[\w.-]+$/.test(c.repository) ||
-    !/^[\w.-]+$/.test(c.host)
+    !/^[\w.-]+$/.test(c.host) ||
+    (c.layout !== undefined && c.layout !== "services-v1")
   )
     throw new Error("ワークスペース設定が不正または非対応です");
   return c;
@@ -247,15 +255,16 @@ export function initialize(
 ): void {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !/^[\w.-]+$/.test(host))
     throw new Error("--repo owner/repo と有効な --host が必要です");
-  const dirs = [".raprid", "issues", "wiki", "logs", "repos"];
+  const dirs = [".raprid", "github", "slack", "logs", "repos"];
   const files: Record<string, string> = {
     "README.md":
-      "# raprid ワークスペース\n\nIssuesはissues/、資料はwiki/で扱います。raprid sync pullで取得し、編集後にraprid sync push --dry-runで送信差分を確認してください。\n",
+      "# raprid ワークスペース\n\nGitHub は github/、Slack は slack/ で扱います。\n",
     "AGENTS.md":
       "# エージェント向け操作\n\nindex.mdは本文、issue.jsonは編集属性、remote.jsonは取得情報です。未取得を空として送信しないこと。送信は利用者が許可した範囲で実行してください。同期ジャーナルは削除しないこと。\n",
     "CLAUDE.md":
       "# 作業手順\n\nAGENTS.mdを読み、raprid --helpで操作を確認してください。\n",
-    ".gitignore": ".raprid/cache/\n.raprid/locks/\nwiki/\nrepos/\n",
+    ".gitignore": ".env\n.raprid/cache/\n.raprid/locks/\ngithub/wiki/\nrepos/\n",
+    ".env.example": "SLACK_USER_OAUTH_TOKEN=\nSLACK_WORKSPACE_ID=\nSLACK_CHANNEL_ID=\n",
   };
   for (const p of [...dirs, ...Object.keys(files)])
     if (existsSync(safe(root, p)))
@@ -273,7 +282,10 @@ export function initialize(
       repository,
       host,
       apiVersion: "2026-03-10",
+      layout: "services-v1",
     });
+    mkdirSync(safe(root, "issues"), { recursive: true });
+    mkdirSync(safe(root, "wiki"), { recursive: true });
     for (const dir of [
       "catalog",
       "sync/issues",

@@ -1,4 +1,4 @@
-export const help = `raprid v2 — GitHub Issues / Wiki をローカルで管理
+export const help = `raprid v3 — GitHub Issues / Wiki をローカルで管理
   init <dir> --repo owner/repo [--host github.com] [--dry-run] [--no-git]
   issue list [--json]
   issue show <id|#番号>
@@ -10,7 +10,14 @@ export const help = `raprid v2 — GitHub Issues / Wiki をローカルで管理
   sync resolve <id|#番号> --take local|remote
   sync reconcile <操作ID> [--remote-id 番号]
   wiki status|pull|commit|push [--dry-run] [--message 内容]
+  slack pull --channel ID [--oldest TS] [--latest TS]
+  slack search <検索語>
+  slack draft --workspace ID --channel ID --body-file path [--thread TS]
+  slack preview <下書きID> --workspace ID --channel ID
+  slack send <下書きID> --workspace ID --channel ID --revision ハッシュ
+  slack reconcile <下書きID> --remote-id TS
   migrate <旧ワークスペース> <新ワークスペース> --repo owner/repo [--apply]
+  layout migrate [--apply]  # v2 の issues/ と wiki/ を github/ へ移す
   tui
 本文はindex.md、属性はissue.json。編集はローカル保存、送信はsync pushで明示実行。
 Wiki送信はwiki commit→wiki push。GitHub認証はGH_TOKENまたはgh auth loginを利用。`;

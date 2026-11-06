@@ -130,7 +130,7 @@ test("初期化は既存パスを上書きせず、dry-runは書き込まない"
 test("リンクによるワークスペース外書き込みを拒否", () => {
   const root = fixture(),
     outside = mkdtempSync(join(tmpdir(), "outside-"));
-  symlinkSync(outside, join(root, "issues", "evil"));
+  symlinkSync(outside, join(root, "github", "issues", "evil"));
   assert.throws(() => write(root, "issues/evil/issue.json", {}));
   assert.deepEqual(readdirSync(outside), []);
   assert.throws(() => safe(root, "../bad"));
@@ -155,7 +155,7 @@ test("pullはPRを除き、未取得属性の空ファイルを生成しない",
   assert.equal(ids(root).length, 1);
   const id = ids(root)[0];
   assert.equal(document(root, id).body, "本文");
-  assert.equal(existsSync(join(root, "issues", id, "fields.json")), false);
+  assert.equal(existsSync(join(root, "github", "issues", id, "fields.json")), false);
   assert.equal(status(root).issues[0].fetched.fields.status, "unavailable");
 });
 test("別項目の変更は統合し、同じ本文の競合は保持して送信しない", async () => {
@@ -377,7 +377,7 @@ test("コメントの結果不明は編集後もIDで照合し、別Issueは拒�
   };
   await assert.rejects(push(root, api));
   writeFileSync(
-    join(root, `issues/${id}/comments/${cid}/index.md`),
+    join(root, `github/issues/${id}/comments/${cid}/index.md`),
     "送信後の編集",
   );
   api.notes[0].issue_url = "https://api.github.com/repos/test/repo/issues/9";
@@ -386,7 +386,7 @@ test("コメントの結果不明は編集後もIDで照合し、別Issueは拒�
   api.notes[0].issue_url = "https://api.github.com/repos/test/repo/issues/1";
   await reconcile(root, api, op.id, 201);
   assert.equal(
-    readFileSync(join(root, `issues/${id}/comments/${cid}/index.md`), "utf8"),
+    readFileSync(join(root, `github/issues/${id}/comments/${cid}/index.md`), "utf8"),
     "送信後の編集",
   );
 });
@@ -584,7 +584,7 @@ test("Wikiは実Gitでcommit/pushでき、分岐を強制上書きしない", as
     return git(cwd, args);
   };
   wiki(root, "pull", false, undefined, transport);
-  const checkout = join(root, "wiki");
+  const checkout = join(root, "github/wiki");
   git(checkout, ["config", "user.name", "試験"]);
   git(checkout, ["config", "user.email", "test@example.invalid"]);
   writeFileSync(join(checkout, "Home.md"), "手元");

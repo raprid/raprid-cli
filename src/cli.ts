@@ -155,7 +155,7 @@ const argv = process.argv.slice(2);
 const legacy = argv[0] === "init" && argv.includes("--legacy");
 if (legacy) argv.splice(argv.indexOf("--legacy"), 1);
 const v2 =
-  ["issue", "sync", "wiki", "migrate"].includes(argv[0]) ||
+  ["issue", "sync", "wiki", "migrate", "slack", "layout"].includes(argv[0]) ||
   (argv[0] === "init" && !legacy);
 if (v2) {
   const { run } = await import("./workspace/cli.js");

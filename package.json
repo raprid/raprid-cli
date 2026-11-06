@@ -1,8 +1,8 @@
 {
   "name": "raprid",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "GitHub IssuesとWikiをローカルで編集・同期するCLIとTUI",
+  "description": "GitHubとSlackをローカルで管理するCLIとTUI",
   "license": "MIT",
   "type": "module",
   "repository": {
