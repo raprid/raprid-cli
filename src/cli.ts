@@ -7,7 +7,7 @@ import { delegate, DelegateError } from "./delegate.js";
 import { init, InitError, loadBundle } from "./init.js";
 
 const usage = `使い方:
-  raprid init [<dir>] [--no-git] [--dry-run]
+  raprid init --legacy [<dir>] [--no-git] [--dry-run]
   raprid <group> <command> [...]
   raprid tui [<案件名>]
   raprid --version
@@ -34,10 +34,15 @@ init 以外は、カレントディレクトリから上へ管理リポジトリ
 終了コード:
   0 成功 / 1 操作できなかった (衝突・書き込み失敗・管理リポジトリが無い・版が非対応) / 2 引数の誤り`;
 
+import { help as workspaceHelp } from "./workspace/help.js";
+const awaitHelp = () => workspaceHelp;
+
 const groups = new Set(["job", "task", "qa", "ui", "log", "repo"]);
 
 function version(): string {
-  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
+  const pkg = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { version: string };
   return pkg.version;
 }
 
@@ -69,10 +74,14 @@ function runInit(target: string, git: boolean, dryRun: boolean): number {
   const result = init({ target, git, dryRun }, bundle);
   const shown = relative(process.cwd(), result.root) || ".";
   if (dryRun) {
-    console.log(`衝突はありません。${shown} に ${bundle.entries.length} 件のファイルを生成できます。`);
+    console.log(
+      `衝突はありません。${shown} に ${bundle.entries.length} 件のファイルを生成できます。`,
+    );
     return 0;
   }
-  console.log(`${shown} に ${result.written} 件のファイルを生成しました (雛形: ${bundle.source.commit.slice(0, 7)})。`);
+  console.log(
+    `${shown} に ${result.written} 件のファイルを生成しました (雛形: ${bundle.source.commit.slice(0, 7)})。`,
+  );
   const gitMessage = {
     initialized: "git init を実行しました。",
     existing: "既存の Git 作業ツリー内のため、git init は行っていません。",
@@ -115,16 +124,24 @@ function main(argv: string[]): number {
   }
   const [command, ...rest] = positionals;
   if (values.help || command === undefined || command === "help") {
-    console.log(usage);
+    console.log(awaitHelp() + "\n旧形式（互換用）:\n" + usage);
     return command === undefined && !values.help ? 2 : 0;
   }
   if (command !== "init" || rest.length > 1) {
-    console.error(command === "init" ? "生成先は 1 つだけ指定してください。" : `不明なコマンド: ${command}`);
+    console.error(
+      command === "init"
+        ? "生成先は 1 つだけ指定してください。"
+        : `不明なコマンド: ${command}`,
+    );
     console.error(usage);
     return 2;
   }
   try {
-    return runInit(rest[0] ?? ".", !values["no-git"], values["dry-run"] ?? false);
+    return runInit(
+      rest[0] ?? ".",
+      !values["no-git"],
+      values["dry-run"] ?? false,
+    );
   } catch (error) {
     if (error instanceof InitError) {
       console.error(error.message);
@@ -135,10 +152,27 @@ function main(argv: string[]): number {
 }
 
 const argv = process.argv.slice(2);
-if (argv[0] === "tui") {
+const legacy = argv[0] === "init" && argv.includes("--legacy");
+if (legacy) argv.splice(argv.indexOf("--legacy"), 1);
+const v2 =
+  ["issue", "sync", "wiki", "migrate"].includes(argv[0]) ||
+  (argv[0] === "init" && !legacy);
+if (v2) {
+  const { run } = await import("./workspace/cli.js");
+  process.exitCode = await run(argv);
+} else if (argv[0] === "tui") {
   // Ink / React は TUI のときだけ読み込む
-  const { runTui } = await import("./tui/main.js");
-  process.exitCode = await runTui(argv.slice(1));
+  let root: string | undefined;
+  try {
+    root = (await import("./workspace/store.js")).findRoot();
+  } catch {}
+  if (root) {
+    const { runWorkspaceTui } = await import("./workspace/tui.js");
+    await runWorkspaceTui(root);
+  } else {
+    const { runTui } = await import("./tui/main.js");
+    process.exitCode = await runTui(argv.slice(1));
+  }
 } else {
   process.exitCode = main(argv);
 }

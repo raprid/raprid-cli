@@ -60,7 +60,7 @@ before(() => {
   if (skip) return;
   work = mkdtempSync(join(tmpdir(), "raprid-tui-workflow-pty-"));
   project = join(work, "p");
-  assert.equal(spawnSync(process.execPath, [cli, "init", project], { encoding: "utf8" }).status, 0);
+  assert.equal(spawnSync(process.execPath, [cli, "init", "--legacy", project], { encoding: "utf8" }).status, 0);
   // 工程型タスクに対応した scripts/ に差し替える
   rmSync(join(project, "scripts"), { recursive: true, force: true });
   cpSync(scripts!, join(project, "scripts"), { recursive: true, filter: (source) => !source.includes("node_modules") });

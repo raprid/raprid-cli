@@ -26,6 +26,7 @@ const bundle = JSON.parse(readFileSync(join(repoRoot, "dist", "template.json"), 
 let work: string;
 
 function raprid(cwd: string, ...args: string[]) {
+  if (args[0] === "init") args = ["init", "--legacy", ...args.slice(1)];
   const result = spawnSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8" });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -169,7 +170,7 @@ test("生成途中で失敗したら、この実行で作ったものだけを�
 
 test("書き込みの途中で失敗しても作りかけのファイルを残さない", () => {
   // ulimit -f 1 (512 バイト) を超える write が EFBIG で失敗する。open は成功した後の失敗を再現する
-  const result = spawnSync("sh", ["-c", `ulimit -f 1; exec "$0" "$@"`, process.execPath, cli, "init", "p", "--no-git"], {
+  const result = spawnSync("sh", ["-c", `ulimit -f 1; exec "$0" "$@"`, process.execPath, cli, "init", "--legacy", "p", "--no-git"], {
     cwd: work,
     encoding: "utf8",
   });
@@ -179,7 +180,7 @@ test("書き込みの途中で失敗しても作りかけのファイルを残�
 });
 
 test("GIT_DIR などの環境変数があっても生成先に git init する", () => {
-  const result = spawnSync(process.execPath, [cli, "init", "p"], {
+  const result = spawnSync(process.execPath, [cli, "init", "--legacy", "p"], {
     cwd: work,
     encoding: "utf8",
     env: { ...process.env, GIT_DIR: join(work, "outside.git"), GIT_WORK_TREE: work },

@@ -1,8 +1,8 @@
 {
   "name": "raprid",
-  "version": "0.4.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "プロジェクト管理リポジトリの初期状態を生成し、管理操作を委譲する CLI",
+  "description": "GitHub IssuesとWikiをローカルで編集・同期するCLIとTUI",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -39,6 +39,7 @@
   "dependencies": {
     "ink": "7.1.1",
     "react": "19.3.0",
-    "string-width": "8.3.0"
+    "string-width": "8.3.0",
+    "yaml": "^2.9.1"
   }
 }

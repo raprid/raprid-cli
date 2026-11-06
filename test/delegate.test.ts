@@ -11,6 +11,7 @@ const cli = join(repoRoot, "dist", "cli.js");
 let work: string;
 
 function raprid(cwd: string, args: string[], env: NodeJS.ProcessEnv = {}) {
+  if (args[0] === "init") args = ["init", "--legacy", ...args.slice(1)];
   const result = spawnSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...env } });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }

@@ -170,7 +170,7 @@ test("dispose は実行中の子プロセスを止め、--capabilities を知ら
 test("初期化したプロジェクトの scripts/ で ui snapshot と show を取得できる", async () => {
   const cli = join(repoRoot, "dist", "cli.js");
   const root = join(work, "init");
-  assert.equal(spawnSync(process.execPath, [cli, "init", root, "--no-git"], { encoding: "utf8" }).status, 0);
+  assert.equal(spawnSync(process.execPath, [cli, "init", "--legacy", root, "--no-git"], { encoding: "utf8" }).status, 0);
   const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
   assert.equal(spawnSync(process.execPath, [cli, "job", "create", "PROJ-1"], { cwd: root, env }).status, 0);
   assert.equal(spawnSync(process.execPath, [cli, "task", "add", "PROJ-1", "a", "todo", "日本語"], { cwd: root, env }).status, 0);
@@ -191,7 +191,7 @@ test("通常の CLI は Ink / React を読み込まず、tui のときだけ読�
   const run = (...args: string[]) => spawnSync(process.execPath, [join(bare, "dist", "cli.js"), ...args], { cwd: work, encoding: "utf8" });
   assert.equal(run("--version").stdout.trim(), JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).version);
   assert.equal(run("--help").status, 0);
-  assert.equal(run("init", join(work, "generated"), "--no-git").status, 0);
+  assert.equal(run("init", "--legacy", join(work, "generated"), "--no-git").status, 0);
   const tui = run("tui", "--help");
   assert.notEqual(tui.status, 0);
   assert.match(tui.stderr, /Cannot find package '(ink|react)'/, "tui だけが Ink / React を読み込む");
@@ -200,7 +200,7 @@ test("通常の CLI は Ink / React を読み込まず、tui のときだけ読�
 test("backend は複数の待ち理由を --blocked-by で 1 件ずつ渡し、実際の scripts/ で無損失に保存される", async () => {
   const cli = join(repoRoot, "dist", "cli.js");
   const root = join(work, "blocked");
-  assert.equal(spawnSync(process.execPath, [cli, "init", root, "--no-git"], { encoding: "utf8" }).status, 0);
+  assert.equal(spawnSync(process.execPath, [cli, "init", "--legacy", root, "--no-git"], { encoding: "utf8" }).status, 0);
   const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
   const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: root, env, encoding: "utf8" });
   assert.equal(run("job", "create", "PROJ-1").status, 0);

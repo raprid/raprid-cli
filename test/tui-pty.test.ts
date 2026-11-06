@@ -75,7 +75,7 @@ function allFound(result: Result): void {
 before(() => {
   work = mkdtempSync(join(tmpdir(), "raprid-tui-pty-"));
   project = join(work, "p");
-  assert.equal(spawnSync(process.execPath, [cli, "init", project], { encoding: "utf8" }).status, 0);
+  assert.equal(spawnSync(process.execPath, [cli, "init", "--legacy", project], { encoding: "utf8" }).status, 0);
   const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
   const run = (...args: string[]) => assert.equal(spawnSync(process.execPath, [cli, ...args], { cwd: project, env, encoding: "utf8" }).status, 0, args.join(" "));
   run("job", "create", "PROJ-1");
@@ -228,7 +228,7 @@ test("端末でない・TERM=dumb・非対応の scripts/・存在しない案�
 
 test("複数行の回答と貼り付けを保存し、別の CLI の回答と競合したら上書きせずに下書きを残す", { skip }, () => {
   const root = join(work, "write");
-  assert.equal(spawnSync(process.execPath, [cli, "init", root], { encoding: "utf8" }).status, 0);
+  assert.equal(spawnSync(process.execPath, [cli, "init", "--legacy", root], { encoding: "utf8" }).status, 0);
   const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
   const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: root, env, encoding: "utf8" });
   assert.equal(run("job", "create", "PROJ-1").status, 0);
@@ -296,7 +296,7 @@ test("複数行の回答と貼り付けを保存し、別の CLI の回答と競
 
 test("複数の待ち理由を持つ pending に、既存の理由を保ったまま 1 件追加する", { skip }, () => {
   const root = join(work, "blocked");
-  assert.equal(spawnSync(process.execPath, [cli, "init", root], { encoding: "utf8" }).status, 0);
+  assert.equal(spawnSync(process.execPath, [cli, "init", "--legacy", root], { encoding: "utf8" }).status, 0);
   const env = { ...process.env, RAPRID_ACTOR: "agent/test" };
   const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd: root, env, encoding: "utf8" });
   assert.equal(run("job", "create", "PROJ-1").status, 0);
