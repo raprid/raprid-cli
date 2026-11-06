@@ -9,7 +9,7 @@ Node.js 24以上、Git、macOSまたはLinuxが必要。GitHub認証は`GH_TOKEN
 npmレジストリへは公開せず、GitHub Releaseのtarballを配布する。
 
 ```sh
-npm install -g https://github.com/raprid/raprid-cli/releases/download/v2.0.0/raprid-2.0.0.tgz
+npm install -g --allow-remote=all https://github.com/raprid/raprid-cli/releases/download/v2.2.0/raprid-2.2.0.tgz
 raprid --version
 ```
 
@@ -144,7 +144,7 @@ Wikiは独立したGitリポジトリ。未コミット変更があるpull/push�
 
 ## TUI
 
-`raprid tui`でIssuesとWikiを表示する。↑↓で選択、Tabで切替、PgUp/PgDnで本文を送る。`r`はローカル再読込、`g`は取得、`p`はIssue送信のプレビュー。プレビューの`y`で再照合後に送信、`n`で取消。
+`raprid tui`でIssuesとWikiを全画面表示する。Tab / Shift+Tabまたはh / lでペインを移動し、j / kまたは↑↓で選択・スクロールする。`w`でIssuesとWikiを切り替え、`?`で操作ヘルプを表示する。`r`はローカル再読込、`g`は取得、`p`はIssue送信のプレビュー。プレビューの`y`で再照合後に送信、`n`で取消。
 
 `n`でIssue作成、`e`で本文、`t`でタイトルを編集する。編集は末尾入力方式でCtrl+Sが保存、Escが取消。自由なカーソル編集は`issue edit`を使う。`c`で終了/再開をローカル保存する。編集中に外部更新があれば保存せず入力を保持する。Wikiの編集・commit・pushと競合解決はCLIから行う。
 
@@ -180,6 +180,6 @@ npm pack
 
 旧雛形はv0.4.0の互換用として保持する。新形式の実装はsrc/workspace/、試験はtest/workspace*.test.ts。試験には競合・通信断・権限不足・中断復旧・実GitのWiki同期・非破壊移行・TUI編集競合を含む。
 
-リリースはコミット・タグを固定して`raprid-2.0.0.tgz`と同一内容の`raprid.tgz`、SHA256SUMSをGitHub Releaseへ添付する。npm publishは行わない。
+リリースはコミット・タグを固定して`raprid-2.2.0.tgz`と同一内容の`raprid.tgz`、SHA256SUMSをGitHub Releaseへ添付する。npm publishは行わない。
 
 MIT License。

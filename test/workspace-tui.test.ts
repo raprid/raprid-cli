@@ -53,7 +53,27 @@ test("TUIの保存とWikiタブ切替はネットワークなしで操作でき�
     view.stdin.write("\x13");
     await wait();
     assert.equal(document(root, id).body, "本文追記");
-    view.stdin.write("\t");
+    view.stdin.write("w");
+    await wait();
+    assert.match(view.lastFrame() ?? "", /Wiki/);
+  } finally {
+    view.unmount();
+    cleanup();
+  }
+});
+test("キーボードでヘルプとビューを操作できる", async () => {
+  const root = mkdtempSync(join(tmpdir(), "raprid-tui-"));
+  initialize(root, "test/repo");
+  add(root, "最初のIssue", "本文");
+  const view = render(createElement(WorkspaceApp, { root }));
+  try {
+    await wait();
+    view.stdin.write("?");
+    await wait();
+    assert.match(view.lastFrame() ?? "", /操作ヘルプ/);
+    view.stdin.write("\x1b");
+    await wait();
+    view.stdin.write("w");
     await wait();
     assert.match(view.lastFrame() ?? "", /Wiki/);
   } finally {

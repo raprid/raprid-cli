@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Box, Text, render, useApp, useInput, useStdout } from "ink";
+import { Box, Text, render, useApp, useInput, useWindowSize } from "ink";
 import { readdirSync, existsSync } from "node:fs";
 import {
   add,
@@ -37,7 +37,7 @@ const detailTabs: { id: DetailTab; label: string }[] = [
 ];
 
 export function WorkspaceApp({ root }: { root: string }) {
-  const { exit } = useApp(), { stdout } = useStdout();
+  const { exit } = useApp(), { columns, rows: terminalRows } = useWindowSize();
   const [snapshot, setSnapshot] = useState(() => status(root));
   const [index, setIndex] = useState(0), [view, setView] = useState<Filter>("all");
   const [tab, setTab] = useState<"issues" | "wiki">("issues");
@@ -48,6 +48,8 @@ export function WorkspaceApp({ root }: { root: string }) {
   const [preview, setPreview] = useState<{ changes: any[]; revision: string } | null>(null);
   const [editRevision, setEditRevision] = useState(""), [editing, setEditing] = useState<EditMode>(null), [input, setInput] = useState("");
   const [narrowDetail, setNarrowDetail] = useState(false);
+  const [focus, setFocus] = useState<"views" | "list" | "detail">("list");
+  const [help, setHelp] = useState(false);
   const pages = existsSync(safe(root, "wiki")) ? readdirSync(safe(root, "wiki")).filter((x) => x.endsWith(".md")).sort() : [];
   const visible = useMemo(() => snapshot.issues.filter((x: any) => {
     if (view === "open" && x.state !== "open") return false;
@@ -74,6 +76,7 @@ export function WorkspaceApp({ root }: { root: string }) {
   }
   useInput((value, key) => {
     if (busy) return;
+    if (help) { if (key.escape || value === "?" || value === "q") setHelp(false); return; }
     if (editing) {
       if (key.escape) { setEditing(null); return; }
       if (key.ctrl && value === "s") {
@@ -102,9 +105,22 @@ export function WorkspaceApp({ root }: { root: string }) {
       return;
     }
     if (value === "q") { exit(); return; }
-    if (key.tab) { setTab((x) => x === "issues" ? "wiki" : "issues"); setIndex(0); setOffset(0); return; }
-    if (key.upArrow) setIndex((x) => Math.max(0, x - 1));
-    if (key.downArrow) setIndex((x) => Math.min(Math.max(0, items.length - 1), x + 1));
+    if (value === "?") { setHelp(true); return; }
+    if (value === "w") { setTab((x) => x === "issues" ? "wiki" : "issues"); setIndex(0); setOffset(0); return; }
+    if (key.tab || value === "h" || value === "l") {
+      const panes = (columns ?? 100) >= 100 ? ["views", "list", "detail"] as const : ["list", "detail"] as const;
+      const current = Math.max(0, panes.indexOf(focus as never));
+      const delta = value === "h" || (key.tab && key.shift) ? -1 : 1;
+      setFocus(panes[(current + delta + panes.length) % panes.length]); return;
+    }
+    if (key.escape && narrowDetail) { setNarrowDetail(false); return; }
+    if (key.upArrow || value === "k" || key.downArrow || value === "j") {
+      const delta = key.upArrow || value === "k" ? -1 : 1;
+      if (focus === "views" && tab === "issues") { const i = filters.findIndex((x) => x.id === view); setView(filters[Math.max(0, Math.min(filters.length - 1, i + delta))].id); setIndex(0); }
+      else if (focus === "detail" || narrowDetail) setOffset((x) => Math.max(0, x + delta));
+      else { setIndex((x) => Math.max(0, Math.min(items.length - 1, x + delta))); setOffset(0); }
+      return;
+    }
     if (key.pageDown) setOffset((x) => x + 10);
     if (key.pageUp) setOffset((x) => Math.max(0, x - 10));
     if (value === "r") refresh();
@@ -121,12 +137,12 @@ export function WorkspaceApp({ root }: { root: string }) {
       if (value === "a") beginEdit("comment");
       if (value === "c") void work(() => { const doc = document(root, selected.id); doc.issue.state = doc.issue.state === "open" ? "closed" : "open"; doc.issue.stateReason = doc.issue.state === "closed" ? "completed" : "reopened"; saveDocument(root, selected.id, doc); return "状態をローカル保存しました。送信にはpを使用"; });
     }
-    if (key.return && (stdout.columns ?? 80) < 100) setNarrowDetail((x) => !x);
+    if (key.return && ((columns ?? 80) < 60 || (terminalRows ?? 24) < 14)) setNarrowDetail(true);
   });
   let doc: any = null, body = "", commentList: any[] = [], relations: any = null, fields: any = null, remote: any = null, conflicts: any[] = [];
   if (selected && tab === "issues") try { doc = document(root, selected.id); body = doc.body; commentList = comments(root, selected.id); relations = read(root, `${issuePath(selected.id)}/relations.json`, null); fields = read(root, `${issuePath(selected.id)}/fields.json`, null); remote = read(root, `${issuePath(selected.id)}/remote.json`, null); conflicts = read(root, `.raprid/sync/issues/${selected.id}/conflicts/document.json`, []); } catch (e) { body = String(e); }
   else if (selected) try { body = textFile(root, `wiki/${selected.id}`); } catch (e) { body = String(e); }
-  const cols = stdout.columns ?? 100, rows = stdout.rows ?? 24, compact = cols < 100, tiny = cols < 60 || rows < 14;
+  const cols = columns ?? 100, rows = terminalRows ?? 24, compact = cols < 100, tiny = cols < 60 || rows < 14;
   const height = Math.max(4, rows - 11), width = Math.max(16, cols - 4);
   const wrap = (s: string) => s.split("\n").flatMap((line) => { const a = Array.from(line), size = Math.max(12, Math.floor((tiny ? width : width * (compact ? .58 : .4)) * .9)); return a.length ? Array.from({ length: Math.ceil(a.length / size) }, (_, i) => a.slice(i * size, (i + 1) * size).join("")) : [""]; });
   const content = tab === "wiki" ? wrap(body) : detail === "overview" ? [
@@ -141,24 +157,25 @@ export function WorkspaceApp({ root }: { root: string }) {
     ...conflicts.flatMap((c: any) => [`• ${c.field}`, `  ローカル: ${JSON.stringify(c.local)}`, `  リモート: ${JSON.stringify(c.remote)}`]),
     `結果確認待ち操作: ${snapshot.operations.length}`,
   ] : wrap(body);
-  return <Box flexDirection="column">
-    <Box justifyContent="space-between"><Text bold>raprid v2.1 — {config(root).repository}</Text><Text color="cyan">{tab === "issues" ? "Issues" : "Wiki"}  [Tab切替]</Text></Box>
-    {editing ? <Box flexDirection="column"><Text color="yellow">{editing === "new" ? "新規Issue (1行目:タイトル、以降:本文)" : editing === "comment" ? "コメント" : editing === "body" ? "本文編集" : "タイトル編集"}  Ctrl+S:保存 Esc:取消</Text><Text>{wrap(input).slice(-height).join("\n")}▌</Text></Box>
+  return <Box flexDirection="column" height={rows}>
+    <Box justifyContent="space-between"><Text bold>raprid v2.2 — {config(root).repository}</Text><Text color="cyan">{tab === "issues" ? "Issues" : "Wiki"}  [w切替]</Text></Box>
+    {help ? <Box flexDirection="column"><Text bold>操作ヘルプ</Text><Text>{"Tab / Shift+Tab / h / l: ペイン移動\nj / k または ↑ / ↓: 選択・スクロール\nw: Issues / Wiki  1〜5: 詳細タブ\n/: 検索  [ ]: ビュー切替  x: 検索解除\nn: 新規  e: 本文  t: タイトル  a: コメント  c: 状態\ng: 取得  p: 送信計画  r: 再読込  q: 終了\nEsc または ?: ヘルプを閉じる"}</Text></Box>
+      : editing ? <Box flexDirection="column"><Text color="yellow">{editing === "new" ? "新規Issue (1行目:タイトル、以降:本文)" : editing === "comment" ? "コメント" : editing === "body" ? "本文編集" : "タイトル編集"}  Ctrl+S:保存 Esc:取消</Text><Text>{wrap(input).slice(-height).join("\n")}▌</Text></Box>
       : preview ? <Box flexDirection="column"><Text color="yellow">送信計画 {preview.changes.length}件 — y:送信 n:取消</Text><Text>{wrap(JSON.stringify(preview.changes, null, 2)).slice(0, height).join("\n")}</Text></Box>
       : search !== null ? <Text color="yellow">検索: {search}▌  Enter:適用 Esc:取消</Text>
       : tiny && narrowDetail ? <Box flexDirection="column"><Text bold>{selected?.title ?? "Issueなし"}</Text><Text>{detailTabs.find((x) => x.id === detail)?.label}</Text><Text>{content.slice(offset, offset + height).join("\n")}</Text></Box>
-      : <Box>
-        {!compact && <Box width="18%" flexDirection="column" borderStyle="single" borderColor="gray"><Text bold> VIEWS </Text>{filters.map((f, i) => <Text key={f.id} color={view === f.id ? "cyan" : undefined}>{view === f.id ? "›" : " "} {i + 1}. {f.label}{f.id === "all" ? ` (${snapshot.issues.length})` : f.id === "changed" ? ` (${snapshot.issues.filter((x: any) => x.dirty).length})` : f.id === "conflicts" ? ` (${snapshot.issues.filter((x: any) => x.conflicts).length})` : ""}</Text>)}<Text dimColor> </Text><Text dimColor>[/] 検索</Text><Text dimColor>[ ] ビュー</Text></Box>}
-        {!(tiny && narrowDetail) && <Box width={compact ? "42%" : "35%"} flexDirection="column" borderStyle="single" borderColor="gray"><Text bold> ISSUES {query ? ` / ${query}` : ""} </Text>{items.length ? items.slice(Math.max(0, index - height + 1), Math.max(height, index + 1)).map((item: any, i: number) => <Text key={item.id} color={item.id === selected?.id ? "cyan" : undefined} wrap="truncate">{item.id === selected?.id ? "›" : " "} {item.number ? `#${item.number}` : "local"} {item.state === "open" ? "○" : item.state === "closed" ? "●" : ""} {item.dirty ? "*" : " "}{item.conflicts ? `!${item.conflicts}` : ""} {item.title ?? item.id}</Text>) : <Text dimColor>該当なし</Text>}</Box>}
-        {!compact && <Box width="47%" flexDirection="column" borderStyle="single" borderColor="gray"><Box><Text bold>{selected?.title ?? "詳細"} </Text>{detailTabs.map((t, i) => <Text key={t.id} color={detail === t.id ? "cyan" : "gray"}> {i + 1}:{t.label}</Text>)}</Box><Text>{content.slice(offset, offset + height).join("\n")}</Text></Box>}
-        {compact && <Box width="58%" flexDirection="column" borderStyle="single" borderColor="gray"><Text bold>{selected?.title ?? "詳細"} — Enterで詳細切替</Text><Text>{content.slice(offset, offset + height).join("\n")}</Text></Box>}
+      : <Box flexGrow={1} minHeight={height}>
+        {!compact && <Box width="18%" flexDirection="column" borderStyle="single" borderColor={focus === "views" ? "cyan" : "gray"}><Text bold> VIEWS </Text>{filters.map((f, i) => <Text key={f.id} color={view === f.id ? "cyan" : undefined}>{view === f.id ? "›" : " "} {i + 1}. {f.label}{f.id === "all" ? ` (${snapshot.issues.length})` : f.id === "changed" ? ` (${snapshot.issues.filter((x: any) => x.dirty).length})` : f.id === "conflicts" ? ` (${snapshot.issues.filter((x: any) => x.conflicts).length})` : ""}</Text>)}<Text dimColor> </Text><Text dimColor>[/] 検索</Text><Text dimColor>[ ] ビュー</Text></Box>}
+        {!(tiny && narrowDetail) && <Box width={tiny ? "100%" : compact ? "42%" : "35%"} flexDirection="column" borderStyle="single" borderColor={focus === "list" ? "cyan" : "gray"}><Text bold> {tab === "issues" ? "ISSUES" : "WIKI"} {query ? ` / ${query}` : ""} </Text>{items.length ? items.slice(Math.max(0, index - height + 1), Math.max(height, index + 1)).map((item: any) => <Text key={item.id} color={item.id === selected?.id ? "cyan" : undefined} wrap="truncate">{item.id === selected?.id ? "›" : " "} {item.number ? `#${item.number}` : "local"} {item.state === "open" ? "○" : item.state === "closed" ? "●" : ""} {item.dirty ? "*" : " "}{item.conflicts ? `!${item.conflicts}` : ""} {item.title ?? item.id}</Text>) : <Text dimColor>該当なし</Text>}</Box>}
+        {!compact && <Box width="47%" flexDirection="column" borderStyle="single" borderColor={focus === "detail" ? "cyan" : "gray"}><Box><Text bold>{selected?.title ?? "詳細"} </Text>{detailTabs.map((t, i) => <Text key={t.id} color={detail === t.id ? "cyan" : "gray"}> {i + 1}:{t.label}</Text>)}</Box><Text>{content.slice(offset, offset + height).join("\n")}</Text></Box>}
+        {compact && !tiny && <Box width="58%" flexDirection="column" borderStyle="single" borderColor={focus === "detail" ? "cyan" : "gray"}><Text bold>{selected?.title ?? "詳細"}</Text><Text>{content.slice(offset, offset + height).join("\n")}</Text></Box>}
       </Box>}
     <Text color={busy ? "yellow" : "green"}>{busy ? "処理中…" : message.slice(0, width * 2)}</Text>
-    <Text dimColor>↑↓ 選択  Tab Issues/Wiki  1–5 詳細  /検索  [ ]ビュー  n新規 e本文 tタイトル aコメント c状態  g取得 p送信確認  PgUp/PgDnスクロール  r更新 q終了</Text>
+    <Text dimColor>Tab/h/l ペイン  j/k 移動  w Issues/Wiki  1–5 詳細  /検索  n新規 e編集  g取得 p送信  ?ヘルプ q終了</Text>
     <Text dimColor>ローカル変更は送信計画を確認してからGitHubへ反映します。Wiki編集はCLIを使用してください。</Text>
   </Box>;
 }
 export async function runWorkspaceTui(root: string): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.TERM === "dumb") throw new Error("TUIには端末が必要です。issue list --jsonを使用してください");
-  const app = render(<WorkspaceApp root={root} />); await app.waitUntilExit();
+  const app = render(<WorkspaceApp root={root} />, { alternateScreen: true }); await app.waitUntilExit();
 }
